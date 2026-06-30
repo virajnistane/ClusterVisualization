@@ -425,7 +425,7 @@ class TraceCreator:
         return cluster_data
 
     @staticmethod
-    def _richness_arrays(arr: np.ndarray):
+    def _richness_arrays(arr: np.ndarray) -> "tuple[list, list, list, list]":
         """Return (richness_zp_str, flag_zp_str, richness_rs_str, flag_rs_str) pre-formatted string arrays.
 
         Uses "N/A" when column absent so Plotly renders cleanly without format specifiers.
@@ -1482,18 +1482,17 @@ class TraceCreator:
                     )
                     _near_customdata = [
                         [snr, z, det_code, cluster_id, tid, rzp, fzp, rrs, frs]
-                        for snr, z, det_code, cluster_id, tid, rzp, fzp, rrs, frs in zip(
+                        for snr, z, det_code, cluster_id, tid, rzp, fzp, rrs, frs in zip(  # type: ignore[misc]
                             near_catred_data["SNR_CLUSTER"],
                             near_catred_data["Z_CLUSTER"],
                             (
                                 near_catred_data["DET_CODE_NB"]
                                 if has_det_code
-                                else [2 if algorithm.lower() == "pzwav" else 1]
-                                * len(near_catred_data)
-                                *self._richness_arrays(near_catred_data),
+                                else [2 if algorithm.lower() == "pzwav" else 1] * len(near_catred_data)
                             ),
                             near_catred_data["ID_UNIQUE_CLUSTER"],
                             near_tile_ids,
+                            *self._richness_arrays(near_catred_data),
                         )
                     ]
                     _near_hovertemplate = (

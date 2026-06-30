@@ -329,6 +329,8 @@ class CATREDCallbacks:
                 return fig, empty_phz_fig, status, time.time()
 
             except Exception as e:
+                import traceback
+                traceback.print_exc()
                 error_status = dbc.Alert(f"Error rendering CATRED data: {str(e)}", color="danger")
                 return dash.no_update, dash.no_update, error_status, dash.no_update
 
