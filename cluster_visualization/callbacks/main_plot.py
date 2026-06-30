@@ -23,28 +23,6 @@ except ImportError:
     print("Warning: Could not import get_idclusters_array from utils. ID cluster upload functionality may be affected.")
 
 
-def _build_selection_shape(box_coords: dict, relayout_data: Optional[dict]) -> dict:
-    """Build a rectangle shape dict for the selected cluster point."""
-    ra, dec = box_coords["ra"], box_coords["dec"]
-    half_w, half_h = 0.3, 0.3
-    if relayout_data:
-        x0 = relayout_data.get("xaxis.range[0]")
-        x1 = relayout_data.get("xaxis.range[1]")
-        y0 = relayout_data.get("yaxis.range[0]")
-        y1 = relayout_data.get("yaxis.range[1]")
-        if x0 is not None and x1 is not None:
-            half_w = abs(x1 - x0) * 0.015
-        if y0 is not None and y1 is not None:
-            half_h = abs(y1 - y0) * 0.015
-    return dict(
-        type="rect", xref="x", yref="y",
-        x0=ra - half_w, x1=ra + half_w,
-        y0=dec - half_h, y1=dec + half_h,
-        line=dict(color="yellow", width=2),
-        fillcolor="rgba(0,0,0,0)",
-        layer="above",
-    )
-
 
 class MainPlotCallbacks:
     """Handles main plot rendering callbacks"""
@@ -568,7 +546,15 @@ class MainPlotCallbacks:
                 empty_phz_fig = self._create_empty_phz_plot()
                 
                 if box_coords:
-                    fig.update_layout(shapes=[_build_selection_shape(box_coords, relayout_data)])
+                    fig.add_trace(go.Scatter(
+                        x=[box_coords["ra"]],
+                        y=[box_coords["dec"]],
+                        mode="markers",
+                        marker=dict(symbol="square-open", size=18, color="yellow", line=dict(color="yellow", width=2)),
+                        name="__selected_cluster__",
+                        showlegend=False,
+                        hoverinfo="skip",
+                    ))
 
                 _fig_json = fig.to_json()
                 print(f"Debug: Figure JSON {len(_fig_json) / 1024:.0f} KB, {len(traces)} traces, {len(data['data_detcluster_mergedcat'])} merged clusters")
@@ -819,7 +805,15 @@ class MainPlotCallbacks:
                 empty_phz_fig = self._create_empty_phz_plot()
 
                 if box_coords:
-                    fig.update_layout(shapes=[_build_selection_shape(box_coords, relayout_data)])
+                    fig.add_trace(go.Scatter(
+                        x=[box_coords["ra"]],
+                        y=[box_coords["dec"]],
+                        mode="markers",
+                        marker=dict(symbol="square-open", size=18, color="yellow", line=dict(color="yellow", width=2)),
+                        name="__selected_cluster__",
+                        showlegend=False,
+                        hoverinfo="skip",
+                    ))
 
                 _fig_json = fig.to_json()
                 print(f"Debug: Figure JSON {len(_fig_json) / 1024:.0f} KB, {len(traces)} traces, {len(data['data_detcluster_mergedcat'])} merged clusters")
