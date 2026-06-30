@@ -437,7 +437,7 @@ class DataControls:
                                             min=0.1,
                                             max=1.0,
                                             step=0.1,
-                                            value=0.7,
+                                            value=1.0,
                                             marks={
                                                 0.1: {
                                                     "label": "10%",
@@ -658,7 +658,7 @@ class DataControls:
                                             min=0.1,
                                             max=1.0,
                                             step=0.1,
-                                            value=0.4,
+                                            value=0.7,
                                             marks={
                                                 0.1: {
                                                     "label": "10%",

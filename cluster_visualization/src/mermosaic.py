@@ -869,7 +869,7 @@ class MOSAICHandler:
             data = self._load_corrected_mask()
             if data is not None:
                 pixels, weights, ra, dec, _ = data
-                weight_filter = (weights == 0) if binary_inverted else (weights > 0)
+                weight_filter = np.ones(len(weights), dtype=bool) if binary_inverted else (weights > 0)
                 mask = (
                     weight_filter
                     & (ra >= ra_lo - padding)
@@ -908,7 +908,7 @@ class MOSAICHandler:
                 fp_ra, fp_dec = hp.pix2ang(
                     nside=16384, ipix=footprint["PIXEL"], nest=True, lonlat=True
                 )
-                weight_filter = (footprint["WEIGHT"] == 0) if binary_inverted else (footprint["WEIGHT"] > 0)
+                weight_filter = np.ones(len(footprint), dtype=bool) if binary_inverted else (footprint["WEIGHT"] > 0)
                 mask = (
                     weight_filter
                     & (fp_ra >= ra_lo - padding)
@@ -1467,7 +1467,7 @@ class MOSAICHandler:
         colorscale: str,
         name_prefix: str = "Mask overlay",
         n_bins: int = 12,
-        weight_min: float = 0.8,
+        weight_min: float = 0.85,
         weight_max: float = 1.0,
     ) -> List[go.Scatter]:
         """Create a small number of grouped polygon traces to reduce Plotly lag."""
@@ -1491,27 +1491,33 @@ class MOSAICHandler:
             grouped_count[bin_idx] += 1
 
         traces: List[go.Scatter] = []
-        try:
-            colormap = getattr(plt.cm, colorscale)
-        except AttributeError:
-            print(f"Warning: Invalid colorscale '{colorscale}', defaulting to 'viridis'")
-            colormap = plt.get_cmap("viridis")
+        white_alpha_mode = colorscale == "white_alpha"
+        if not white_alpha_mode:
+            try:
+                colormap = getattr(plt.cm, colorscale)
+            except AttributeError:
+                print(f"Warning: Invalid colorscale '{colorscale}', defaulting to 'viridis'")
+                colormap = plt.get_cmap("viridis")
 
         for bin_idx in range(n_bins):
             if grouped_count[bin_idx] == 0:
                 continue
 
-            color = colormap(bin_idx / max(n_bins - 1, 1))
+            bin_norm = bin_idx / max(n_bins - 1, 1)
+            if white_alpha_mode:
+                fillcolor = f"rgba(255,255,255,{bin_norm:.3f})"
+            else:
+                color = colormap(bin_norm)
+                fillcolor = f"rgba({int(color[0]*255)},{int(color[1]*255)},{int(color[2]*255)},1)"
             traces.append(
                 go.Scatter(
                     x=grouped_x[bin_idx],
                     y=grouped_y[bin_idx],
                     mode="lines",
                     fill="toself",
-                    fillcolor=(
-                        f"rgba({int(color[0]*255)},{int(color[1]*255)},{int(color[2]*255)},{opacity})"
-                    ),
-                    line=dict(width=0.5, color="yellow"),
+                    fillcolor=fillcolor,
+                    opacity=float(opacity),
+                    line=dict(width=0.5, color="rgba(0,0,0,0)"),
                     name=f"{name_prefix} bin {bin_idx}",
                     showlegend=False,
                     hoverinfo="skip",
@@ -1556,6 +1562,29 @@ class MOSAICHandler:
                 hoverinfo="skip",
             )
         ]
+
+    # def _create_mask_aladin_moc_traces(
+    #     self,
+    #     pixels: np.ndarray,
+    #     weights: np.ndarray,
+    #     name_prefix: str = "Mask aladin moc",
+    #     n_bins: int = 12,
+    #     weight_min: float = 0.85,
+    #     weight_max: float = 1.0,
+    # ) -> List[go.Scatter]:
+    #     """Emit single invisible trace with all HEALPix pixel IDs (order=14) for Aladin MOC rendering."""
+    #     if len(pixels) == 0:
+    #         return []
+    #     return [go.Scatter(
+    #         x=[None],
+    #         y=[None],
+    #         mode="markers",
+    #         visible=False,
+    #         showlegend=False,
+    #         hoverinfo="skip",
+    #         name=name_prefix,
+    #         text=",".join(str(int(p)) for p in pixels),
+    #     )]
 
     def create_mosaic_image_trace(
         self,
@@ -1743,40 +1772,50 @@ class MOSAICHandler:
         io_time = time.time() - io_start
         n_pix = len(pix_arr)
         print(f"Footprint pixels in viewport ({mask_type}, inverted={binary_inverted}): {n_pix}")
-        if n_pix > 0 and not binary_inverted:
+        if n_pix > 0:
             print(f"Weight range: {wt_arr.min():.3f} to {wt_arr.max():.3f}")
 
         # Create grouped traces for HEALPix footprint polygons.
         footprint_traces: List[go.Scatter] = []
-        weight_min, weight_max = 0.8, 1.0
+        weight_min, weight_max = 0.85, 1.0
 
         if n_pix > 0:
             print(f"Creating {'binary inverted' if binary_inverted else 'grouped'} traces for {n_pix} HEALPix polygons...")
             polygon_start = time.time()
+            display_weights = 1.0 - wt_arr if binary_inverted else wt_arr
             if binary_inverted:
-                footprint_traces = self._create_binary_mask_traces(
-                    pixels=pix_arr,
-                    opacity=opacity,
-                )
-            else:
-                footprint_traces = self._create_grouped_mask_traces(
-                    pixels=pix_arr,
-                    weights=wt_arr,
-                    opacity=opacity,
-                    colorscale=colorscale,
-                    name_prefix="Mask overlay",
-                    n_bins=12,
-                    weight_min=weight_min,
-                    weight_max=weight_max,
-                )
+                nonzero = display_weights >= 0.85
+                pix_arr, display_weights = pix_arr[nonzero], display_weights[nonzero]
+            active_colorscale = "white_alpha"
+            # outline_name_prefix = "Inverted mask aladin moc" if binary_inverted else "Mask aladin moc"
+            footprint_traces = self._create_grouped_mask_traces(
+                pixels=pix_arr,
+                weights=display_weights,
+                opacity=opacity,
+                colorscale=active_colorscale,
+                name_prefix="Inverted mask overlay" if binary_inverted else "Mask overlay",
+                n_bins=12,
+                weight_min=weight_min,
+                weight_max=weight_max,
+            )
+            # footprint_traces.extend(self._create_mask_aladin_moc_traces(
+            #     pixels=pix_arr,
+            #     weights=display_weights,
+            #     name_prefix=outline_name_prefix,
+            #     n_bins=12,
+            #     weight_min=weight_min,
+            #     weight_max=weight_max,
+            # ))
             polygon_time = time.time() - polygon_start
         else:
             polygon_time = 0.0
 
         # Add a colorbar trace (invisible heatmap that only shows the colorbar).
-        if footprint_traces and add_colorbar and not binary_inverted:
+        if footprint_traces and add_colorbar:
+            active_colorscale = "Greys_r"
+            colorbar_title = "Inv. Coverage<br>Weight" if binary_inverted else "Coverage<br>Weight"
             colorbar_trace = self._create_mask_colorbar_trace(
-                weight_min, weight_max, colorscale, title="Coverage<br>Weight"
+                weight_min, weight_max, active_colorscale, title=colorbar_title
             )
             footprint_traces.append(colorbar_trace)
 
@@ -1975,7 +2014,7 @@ class MOSAICHandler:
 
         # Create grouped traces for HEALPix footprint polygons
         footprint_traces: List[go.Scatter] = []
-        weight_min, weight_max = 0.8, 1.0
+        weight_min, weight_max = 0.85, 1.0
 
         if n_pix > 0:
             print(f"Creating grouped traces for {n_pix} HEALPix cutout polygons...")
@@ -2165,7 +2204,7 @@ class MOSAICHandler:
             f"provider={provider_norm}, source={source_id}"
         )
 
-        weight_min, weight_max = 0.8, 1.0
+        weight_min, weight_max = 0.85, 1.0
 
         if mask_type == "corrected":
             # ----------------------------------------------------------------
@@ -2180,22 +2219,30 @@ class MOSAICHandler:
             print(f"[{label}] Viewport pixels: {n_pix}")
 
             if n_pix > 0:
+                display_weights = 1.0 - wt_arr if binary_inverted else wt_arr
                 if binary_inverted:
-                    mask_traces = self._create_binary_mask_traces(
-                        pixels=pix_arr,
-                        opacity=opacity,
-                    )
-                else:
-                    mask_traces = self._create_grouped_mask_traces(
-                        pixels=pix_arr,
-                        weights=wt_arr,
-                        opacity=opacity,
-                        colorscale=colorscale,
-                        name_prefix="Mask overlay",
-                        n_bins=12,
-                        weight_min=weight_min,
-                        weight_max=weight_max,
-                    )
+                    nonzero = display_weights > 0.85
+                    pix_arr, display_weights = pix_arr[nonzero], display_weights[nonzero]
+                active_colorscale = "white_alpha"
+                outline_name_prefix = "Inverted mask aladin moc" if binary_inverted else "Mask aladin moc"
+                mask_traces = self._create_grouped_mask_traces(
+                    pixels=pix_arr,
+                    weights=display_weights,
+                    opacity=opacity,
+                    colorscale=active_colorscale,
+                    name_prefix="Inverted mask overlay" if binary_inverted else "Mask overlay",
+                    n_bins=12,
+                    weight_min=weight_min,
+                    weight_max=weight_max,
+                )
+                # mask_traces.extend(self._create_mask_aladin_moc_traces(
+                #     pixels=pix_arr,
+                #     weights=display_weights,
+                #     name_prefix=outline_name_prefix,
+                #     n_bins=12,
+                #     weight_min=weight_min,
+                #     weight_max=weight_max,
+                # ))
             else:
                 print(f"[{label}] No pixels found in viewport")
 
@@ -2257,10 +2304,11 @@ class MOSAICHandler:
                         f"[ERROR] Failed to create mask overlay traces for tile {mertileid}: {e}"
                     )
 
-        # Add a single colorbar for weighted mask overlays (not for binary inverted)
-        if mask_traces and not binary_inverted:
+        # Add a single colorbar for mask overlays.
+        if mask_traces:
+            colorbar_title = "Inv. Coverage<br>Weight" if binary_inverted else "Coverage<br>Weight"
             colorbar_trace = self._create_mask_colorbar_trace(
-                weight_min, weight_max, colorscale, title="Coverage<br>Weight"
+                weight_min, weight_max, "Greys_r", title=colorbar_title
             )
             mask_traces.append(colorbar_trace)
 

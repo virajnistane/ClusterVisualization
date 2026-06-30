@@ -392,6 +392,7 @@ class MOSAICCallbacks:
             try:
                 mask_type = mask_type or "corrected"
                 binary_inverted = bool(mask_binary_inverted)
+                mask_opacity = mask_opacity if mask_opacity is not None else 0.4
                 print(f"🔍 Mask overlay callback triggered! n_clicks={n_clicks}")
                 print(
                     f"   -> relayout_data keys: {list(relayout_data.keys()) if relayout_data else None}"
