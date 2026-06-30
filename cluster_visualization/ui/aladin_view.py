@@ -41,6 +41,7 @@ def create_aladin_view() -> html.Div:
                 },
             ),
             dcc.Store(id="aladin-overlay-data-store"),
+            dcc.Store(id="mask-hips-path-store"),
             dcc.Store(id="aladin-click-store"),
             dcc.Store(id="viewport-cluster-count-store"),
             dcc.Store(id="catred-ready-store"),

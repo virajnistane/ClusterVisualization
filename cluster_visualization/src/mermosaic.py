@@ -1563,28 +1563,24 @@ class MOSAICHandler:
             )
         ]
 
-    # def _create_mask_aladin_moc_traces(
-    #     self,
-    #     pixels: np.ndarray,
-    #     weights: np.ndarray,
-    #     name_prefix: str = "Mask aladin moc",
-    #     n_bins: int = 12,
-    #     weight_min: float = 0.85,
-    #     weight_max: float = 1.0,
-    # ) -> List[go.Scatter]:
-    #     """Emit single invisible trace with all HEALPix pixel IDs (order=14) for Aladin MOC rendering."""
-    #     if len(pixels) == 0:
-    #         return []
-    #     return [go.Scatter(
-    #         x=[None],
-    #         y=[None],
-    #         mode="markers",
-    #         visible=False,
-    #         showlegend=False,
-    #         hoverinfo="skip",
-    #         name=name_prefix,
-    #         text=",".join(str(int(p)) for p in pixels),
-    #     )]
+    def _create_mask_aladin_moc_traces(
+        self,
+        pixels: np.ndarray,
+        name_prefix: str = "Mask aladin moc",
+    ) -> List[go.Scatter]:
+        """Emit invisible trace carrying comma-separated HEALPix pixel IDs for Aladin MOC rendering."""
+        if len(pixels) == 0:
+            return []
+        return [go.Scatter(
+            x=[None],
+            y=[None],
+            mode="markers",
+            visible=False,
+            showlegend=False,
+            hoverinfo="skip",
+            name=name_prefix,
+            text=",".join(str(int(p)) for p in pixels),
+        )]
 
     def create_mosaic_image_trace(
         self,
@@ -2235,14 +2231,10 @@ class MOSAICHandler:
                     weight_min=weight_min,
                     weight_max=weight_max,
                 )
-                # mask_traces.extend(self._create_mask_aladin_moc_traces(
-                #     pixels=pix_arr,
-                #     weights=display_weights,
-                #     name_prefix=outline_name_prefix,
-                #     n_bins=12,
-                #     weight_min=weight_min,
-                #     weight_max=weight_max,
-                # ))
+                mask_traces.extend(self._create_mask_aladin_moc_traces(
+                    pixels=pix_arr,
+                    name_prefix=outline_name_prefix,
+                ))
             else:
                 print(f"[{label}] No pixels found in viewport")
 

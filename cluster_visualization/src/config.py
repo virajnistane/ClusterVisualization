@@ -149,6 +149,12 @@ class Config:
         else:
             self.richcl_params_file = _RICHCL_PARAMS_DEFAULT
 
+        if self.config_parser.has_option("paths", "corrected_mask_hips"):
+            _val = self.config_parser.get("paths", "corrected_mask_hips").strip()
+            self.mask_hips_path = _val if _val else None
+        else:
+            self.mask_hips_path = None
+
         # Environment paths
         self.eden_path = self._cvmfs_eden_path
 

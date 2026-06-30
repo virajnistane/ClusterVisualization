@@ -1065,7 +1065,7 @@ class UICallbacks:
         # Clientside: zero server round-trip. Reads cluster/CATRED directly from figure.data traces.
         self.app.clientside_callback(
             """
-            function(relayoutData, viewMode, figure, survey) {
+            function(relayoutData, viewMode, figure, survey, maskHipsPath) {
                 var NO_UPDATE = window.dash_clientside.no_update;
                 if (!figure || !figure.layout) return [true, NO_UPDATE, NO_UPDATE];
 
@@ -1101,7 +1101,8 @@ class UICallbacks:
                 var count = 0;
                 var clusterPts = [];  // {ra, dec, name}
                 var catredPts = [];
-                var maskPolygons = [];  // [[ra,dec], ...] per polygon segment
+                var maskPolygons = [];  // [[ra,dec], ...] per polygon segment (kept for legacy)
+                var maskMocPixels = [];  // flat int array of HEALPix pixel IDs (order 14)
                 var membersPts = [];
 
                 (figure.data || []).forEach(function(trace) {
@@ -1156,6 +1157,15 @@ class UICallbacks:
                             }
                         }
                         if (poly.length > 1) maskPolygons.push(poly);
+                    } else if (name.indexOf('Mask aladin moc') === 0 || name.indexOf('Inverted mask aladin moc') === 0) {
+                        // Invisible trace carrying comma-separated HEALPix pixel IDs
+                        var txt = (typeof trace.text === 'string') ? trace.text : '';
+                        if (txt) {
+                            txt.split(',').forEach(function(s) {
+                                var id = parseInt(s, 10);
+                                if (!isNaN(id)) maskMocPixels.push(id);
+                            });
+                        }
                     } else if (isMembers) {
                         for (var i = 0; i < xs.length; i++) {
                             var ra = xs[i], dec = ys[i];
@@ -1181,6 +1191,8 @@ class UICallbacks:
                     clusters: clusterPts,
                     catred: catredPts,
                     mask_polygons: maskPolygons,
+                    mask_moc_pixels: maskMocPixels,
+                    mask_hips_path: maskHipsPath || null,
                     members: membersPts,
                     viewport: {ra: raCtr, dec: decCtr, fov: fov},
                     survey: survey || 'P/DESI-Legacy-Surveys/DR10/color'
@@ -1195,9 +1207,21 @@ class UICallbacks:
             [Input("cluster-plot", "relayoutData"),
              Input("view-mode-store", "data")],
             [State("cluster-plot", "figure"),
-             State("aladin-survey-dropdown", "value")],
+             State("aladin-survey-dropdown", "value"),
+             State("mask-hips-path-store", "data")],
             prevent_initial_call=False,
         )
+
+        # Populate mask-hips-path-store from config on page load.
+        mask_hips_path_value = getattr(self.config, "mask_hips_path", None) if self.config else None
+
+        @self.app.callback(
+            Output("mask-hips-path-store", "data"),
+            Input("aladin-preload-interval", "n_intervals"),
+            prevent_initial_call=False,
+        )
+        def _init_mask_hips_path_store(_n):
+            return mask_hips_path_value
 
         # Aladin Lite JS bridge: lazy-load CDN, init viewer, push catalog overlays.
         # Mask is added as a HiPS overlay image layer (no server data needed).
@@ -1239,16 +1263,25 @@ class UICallbacks:
                         var sk = document.getElementById('aladin-skeleton');
                         if (sk) sk.style.display = 'none';
 
-                        // Mask polygons from figure.data (same data as Plotly view, already viewport-filtered)
-                        if (data.mask_polygons && data.mask_polygons.length > 0) {
+                        // Mask overlay: HiPS image layer (priority) or MOC fallback
+                        if (data.mask_hips_path) {
                             try {
-                                var maskOverlay = A.graphicOverlay({color: '#ffff00', lineWidth: 1, opacity: 0.5});
-                                aladin.addOverlay(maskOverlay);
-                                var footprints = data.mask_polygons.map(function(poly) {
-                                    return A.polygon(poly);
+                                var hipsLayer = A.imageHiPS(data.mask_hips_path, {name: 'Mask HiPS', opacity: 0.5});
+                                aladin.addNewImageLayer(hipsLayer);
+                            } catch(e) { console.warn('[Aladin] HiPS mask layer failed:', e); }
+                        } else if (data.mask_moc_pixels && data.mask_moc_pixels.length > 0) {
+                            try {
+                                var mocData = {};
+                                mocData['14'] = data.mask_moc_pixels;
+                                var moc = A.MOCFromJSON(mocData, {
+                                    name: 'Mask MOC',
+                                    color: 'white',
+                                    opacity: 0.5,
+                                    fill: true,
+                                    fillColor: 'white'
                                 });
-                                maskOverlay.addFootprints(footprints);
-                            } catch(e) { console.warn('[Aladin] mask overlay failed:', e); }
+                                aladin.addMOC(moc);
+                            } catch(e) { console.warn('[Aladin] MOC mask overlay failed:', e); }
                         }
 
                         // Build source arrays (cheap — just JS objects, no render yet)
