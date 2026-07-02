@@ -1212,8 +1212,10 @@ class UICallbacks:
             prevent_initial_call=False,
         )
 
-        # Populate mask-hips-path-store from config on page load.
-        mask_hips_path_value = getattr(self.config, "mask_hips_path", None) if self.config else None
+        # Populate mask-hips-path-store: convert filesystem path → HTTP URL served by Flask.
+        _fs_path = getattr(self.config, "mask_hips_path", None) if self.config else None
+        import os as _os
+        mask_hips_url = "/hips/mask" if (_fs_path and _os.path.isdir(_fs_path)) else None
 
         @self.app.callback(
             Output("mask-hips-path-store", "data"),
@@ -1221,7 +1223,7 @@ class UICallbacks:
             prevent_initial_call=False,
         )
         def _init_mask_hips_path_store(_n):
-            return mask_hips_path_value
+            return mask_hips_url
 
         # Aladin Lite JS bridge: lazy-load CDN, init viewer, push catalog overlays.
         # Mask is added as a HiPS overlay image layer (no server data needed).

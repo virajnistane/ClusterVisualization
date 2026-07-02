@@ -221,6 +221,18 @@ class ClusterVisualizationApp:
             background_callback_manager=bg_callback_manager,
         )
 
+        # Serve HiPS tiles directory as static files so Aladin Lite can load them via HTTP.
+        _hips_path = getattr(config, "mask_hips_path", None)
+        if _hips_path and os.path.isdir(_hips_path):
+            from flask import send_from_directory
+            _hips_dir = os.path.abspath(_hips_path)
+
+            @self.app.server.route("/hips/mask/<path:filename>")
+            def serve_hips_tile(filename):
+                return send_from_directory(_hips_dir, filename)
+
+            print(f"✓ HiPS mask tiles served at /hips/mask/ from {_hips_dir}")
+
         # Add custom CSS if file exists
         if os.path.exists(css_path):
             try:
