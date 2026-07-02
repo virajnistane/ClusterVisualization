@@ -1266,10 +1266,16 @@ class UICallbacks:
                         if (sk) sk.style.display = 'none';
 
                         // Mask overlay: HiPS image layer (priority) or MOC fallback
+                        // Remove previously added mask layer to prevent stacking on re-init
+                        if (window._aladinMaskLayer) {
+                            try { aladin.removeImageLayer(window._aladinMaskLayer); } catch(e) {}
+                            window._aladinMaskLayer = null;
+                        }
                         if (data.mask_hips_path) {
                             try {
                                 var hipsLayer = A.imageHiPS(data.mask_hips_path, {name: 'Mask HiPS', opacity: 0.5});
                                 aladin.addNewImageLayer(hipsLayer);
+                                window._aladinMaskLayer = hipsLayer;
                             } catch(e) { console.warn('[Aladin] HiPS mask layer failed:', e); }
                         } else if (data.mask_moc_pixels && data.mask_moc_pixels.length > 0) {
                             try {
