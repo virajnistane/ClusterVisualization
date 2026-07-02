@@ -1266,16 +1266,13 @@ class UICallbacks:
                         if (sk) sk.style.display = 'none';
 
                         // Mask overlay: HiPS image layer (priority) or MOC fallback
-                        // Remove previously added mask layer to prevent stacking on re-init
-                        if (window._aladinMaskLayer) {
-                            try { aladin.removeImageLayer(window._aladinMaskLayer); } catch(e) {}
-                            window._aladinMaskLayer = null;
-                        }
-                        if (data.mask_hips_path) {
+                        // Only add if not already present (survives mode switches unlike catalog overlays)
+                        var MASK_LAYER_ID = 'clusterviz-mask-hips';
+                        if (data.mask_hips_path && !window._aladinMaskAdded) {
                             try {
-                                var hipsLayer = A.imageHiPS(data.mask_hips_path, {name: 'Mask HiPS', opacity: 0.5});
+                                var hipsLayer = A.imageHiPS(data.mask_hips_path, {name: 'Mask HiPS', opacity: 0.5, id: MASK_LAYER_ID});
                                 aladin.addNewImageLayer(hipsLayer);
-                                window._aladinMaskLayer = hipsLayer;
+                                window._aladinMaskAdded = true;
                             } catch(e) { console.warn('[Aladin] HiPS mask layer failed:', e); }
                         } else if (data.mask_moc_pixels && data.mask_moc_pixels.length > 0) {
                             try {
@@ -1330,7 +1327,7 @@ class UICallbacks:
                         // Dedup: skip re-render if viewport+survey unchanged (double-fire guard)
                         var fp = ra.toFixed(4) + ',' + dec.toFixed(4) + ',' + fov.toFixed(4) + ',' + survey;
                         dbg('doInit fp=' + fp + ' lastFp=' + (window._aladinLastFp||'null') + ' hasInstance=' + !!window._aladinInstance);
-                        if (window._aladinInstance && fp === window._aladinLastFp) {
+                        if (fp === window._aladinLastFp) {
                             dbg('DEDUP SKIP: fp unchanged');
                             return;
                         }
