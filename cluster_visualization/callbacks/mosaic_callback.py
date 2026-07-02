@@ -110,23 +110,33 @@ class MOSAICCallbacks:
         """Clientside callback: enable/disable MOSAIC render button based on zoom level"""
         self.app.clientside_callback(
             """
-            function(relayoutData, mosaicEnabled, nClicks) {
+            function(relayoutData, mosaicEnabled, nClicks, figure) {
                 if (!nClicks || nClicks === 0) return true;
                 if (!mosaicEnabled) return true;
-                if (!relayoutData) return true;
 
                 var raRange = null, decRange = null;
 
-                if ('xaxis.range[0]' in relayoutData && 'xaxis.range[1]' in relayoutData) {
-                    raRange = Math.abs(relayoutData['xaxis.range[1]'] - relayoutData['xaxis.range[0]']);
-                } else if (relayoutData['xaxis.range']) {
-                    raRange = Math.abs(relayoutData['xaxis.range'][1] - relayoutData['xaxis.range'][0]);
+                if (relayoutData) {
+                    if ('xaxis.range[0]' in relayoutData && 'xaxis.range[1]' in relayoutData) {
+                        raRange = Math.abs(relayoutData['xaxis.range[1]'] - relayoutData['xaxis.range[0]']);
+                    } else if (relayoutData['xaxis.range']) {
+                        raRange = Math.abs(relayoutData['xaxis.range'][1] - relayoutData['xaxis.range'][0]);
+                    }
+                    if ('yaxis.range[0]' in relayoutData && 'yaxis.range[1]' in relayoutData) {
+                        decRange = Math.abs(relayoutData['yaxis.range[1]'] - relayoutData['yaxis.range[0]']);
+                    } else if (relayoutData['yaxis.range']) {
+                        decRange = Math.abs(relayoutData['yaxis.range'][1] - relayoutData['yaxis.range'][0]);
+                    }
                 }
 
-                if ('yaxis.range[0]' in relayoutData && 'yaxis.range[1]' in relayoutData) {
-                    decRange = Math.abs(relayoutData['yaxis.range[1]'] - relayoutData['yaxis.range[0]']);
-                } else if (relayoutData['yaxis.range']) {
-                    decRange = Math.abs(relayoutData['yaxis.range'][1] - relayoutData['yaxis.range'][0]);
+                if ((raRange === null || decRange === null) && figure && figure.layout) {
+                    var layout = figure.layout;
+                    if (layout.xaxis && layout.xaxis.range && layout.xaxis.range.length === 2) {
+                        raRange = Math.abs(layout.xaxis.range[1] - layout.xaxis.range[0]);
+                    }
+                    if (layout.yaxis && layout.yaxis.range && layout.yaxis.range.length === 2) {
+                        decRange = Math.abs(layout.yaxis.range[1] - layout.yaxis.range[0]);
+                    }
                 }
 
                 if (raRange !== null && decRange !== null && raRange < 2.0 && decRange < 2.0) {
@@ -137,7 +147,7 @@ class MOSAICCallbacks:
             """,
             Output("mosaic-render-button", "disabled"),
             [Input("cluster-plot", "relayoutData"), Input("mosaic-enable-switch", "value")],
-            State("render-button", "n_clicks"),
+            [State("render-button", "n_clicks"), State("cluster-plot", "figure")],
             prevent_initial_call=True,
         )
 
@@ -262,6 +272,19 @@ class MOSAICCallbacks:
                     if self.mosaic_handler:
                         set_progress((30, "Finding tiles in zoom window..."))
 
+                        # Enrich relayout_data with figure layout ranges when only dragmode present
+                        effective_relayout = dict(relayout_data) if relayout_data else {}
+                        if current_figure and "xaxis.range[0]" not in effective_relayout and "xaxis.range" not in effective_relayout:
+                            layout = (current_figure.get("layout") or {}) if isinstance(current_figure, dict) else getattr(current_figure, "layout", {})
+                            xr = (layout.get("xaxis") or {}).get("range") if isinstance(layout, dict) else getattr(getattr(layout, "xaxis", None), "range", None)
+                            yr = (layout.get("yaxis") or {}).get("range") if isinstance(layout, dict) else getattr(getattr(layout, "yaxis", None), "range", None)
+                            if xr and len(xr) == 2:
+                                effective_relayout["xaxis.range[0]"] = xr[0]
+                                effective_relayout["xaxis.range[1]"] = xr[1]
+                            if yr and len(yr) == 2:
+                                effective_relayout["yaxis.range[0]"] = yr[0]
+                                effective_relayout["yaxis.range[1]"] = yr[1]
+
                         def mosaic_progress_cb(tile_idx, total_tiles, tile_id=""):
                             pct = 30 + int(60 * tile_idx / max(total_tiles, 1))
                             label = f"Loading tile {tile_idx}/{total_tiles}{': ' + str(tile_id) if tile_id else ''}..."
@@ -269,7 +292,7 @@ class MOSAICCallbacks:
 
                         mosaic_traces = self.mosaic_handler.load_mosaic_traces_in_zoom(
                             data,
-                            relayout_data,
+                            effective_relayout,
                             opacity=opacity,
                             provider=mosaic_provider,
                             source_id=mosaic_source,
@@ -416,10 +439,23 @@ class MOSAICCallbacks:
 
                     # Get mosaic traces for current zoom window
                     if self.mosaic_handler:
+                        # Enrich relayout_data with figure layout ranges when only dragmode present
+                        effective_relayout = dict(relayout_data) if relayout_data else {}
+                        if current_figure and "xaxis.range[0]" not in effective_relayout and "xaxis.range" not in effective_relayout:
+                            layout = (current_figure.get("layout") or {}) if isinstance(current_figure, dict) else getattr(current_figure, "layout", {})
+                            xr = (layout.get("xaxis") or {}).get("range") if isinstance(layout, dict) else getattr(getattr(layout, "xaxis", None), "range", None)
+                            yr = (layout.get("yaxis") or {}).get("range") if isinstance(layout, dict) else getattr(getattr(layout, "yaxis", None), "range", None)
+                            if xr and len(xr) == 2:
+                                effective_relayout["xaxis.range[0]"] = xr[0]
+                                effective_relayout["xaxis.range[1]"] = xr[1]
+                            if yr and len(yr) == 2:
+                                effective_relayout["yaxis.range[0]"] = yr[0]
+                                effective_relayout["yaxis.range[1]"] = yr[1]
+
                         mask_footprint_traces = (
                             self.mosaic_handler.load_mask_overlay_traces_in_zoom(
                                 data,
-                                relayout_data,
+                                effective_relayout,
                                 opacity=mask_opacity,
                                 colorscale="viridis",
                                 provider=mosaic_provider,
