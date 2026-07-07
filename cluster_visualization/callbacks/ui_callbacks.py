@@ -1258,23 +1258,36 @@ class UICallbacks:
                     var survey = data.survey || 'P/DESI-Legacy-Surveys/DR10/color';
 
                     function setupCatalogs(aladin) {
-                        // Remove old catalog layers (keep image layers)
-                        try { aladin.removeLayers(); } catch(e) {}
+                        // Overlay registry: track references for explicit removal
+                        window._aladinOverlays = window._aladinOverlays || {
+                            maskHips: null, maskMoc: null, catalogs: []
+                        };
+                        var reg = window._aladinOverlays;
 
-                        // Hide skeleton as soon as Aladin is positioned — catalogs added async below
+                        // Remove previously tracked catalogs
+                        reg.catalogs.forEach(function(cat) {
+                            try { aladin.removeLayer(cat); } catch(e) {}
+                        });
+                        reg.catalogs = [];
+
+                        // Remove previously tracked MOC
+                        if (reg.maskMoc) {
+                            try { aladin.removeLayer(reg.maskMoc); } catch(e) {}
+                            reg.maskMoc = null;
+                        }
+
+                        // Hide skeleton
                         var sk = document.getElementById('aladin-skeleton');
                         if (sk) sk.style.display = 'none';
 
                         // Mask overlay: HiPS image layer (priority) or MOC fallback
-                        // Only add if not already present (survives mode switches unlike catalog overlays)
-                        var MASK_LAYER_ID = 'clusterviz-mask-hips';
-                        if (data.mask_hips_path && !window._aladinMaskAdded) {
+                        if (data.mask_hips_path && !reg.maskHips) {
                             try {
-                                var hipsLayer = A.imageHiPS(data.mask_hips_path, {name: 'Mask HiPS', opacity: 0.5, id: MASK_LAYER_ID});
+                                var hipsLayer = A.imageHiPS(data.mask_hips_path, {name: 'Mask HiPS', opacity: 0.5});
                                 aladin.addNewImageLayer(hipsLayer);
-                                window._aladinMaskAdded = true;
+                                reg.maskHips = hipsLayer;
                             } catch(e) { console.warn('[Aladin] HiPS mask layer failed:', e); }
-                        } else if (data.mask_moc_pixels && data.mask_moc_pixels.length > 0) {
+                        } else if (!data.mask_hips_path && data.mask_moc_pixels && data.mask_moc_pixels.length > 0) {
                             try {
                                 var mocData = {};
                                 mocData['14'] = data.mask_moc_pixels;
@@ -1286,12 +1299,11 @@ class UICallbacks:
                                     fillColor: 'white'
                                 });
                                 aladin.addMOC(moc);
+                                reg.maskMoc = moc;
                             } catch(e) { console.warn('[Aladin] MOC mask overlay failed:', e); }
                         }
 
-                        // Build source arrays (cheap — just JS objects, no render yet)
-                        var pzwavCat = A.catalog({name: 'PZWAV Clusters', color: '#ff6600', shape: 'x', sourceSize: 14});
-                        var amicoCat = A.catalog({name: 'AMICO Clusters', color: '#ff6600', shape: 'cross', sourceSize: 14});
+                        // Build source arrays
                         var pzwavSrcs = [], amicoSrcs = [];
                         (data.clusters || []).forEach(function(r) {
                             var name = (r.name || '').toUpperCase();
@@ -1299,28 +1311,38 @@ class UICallbacks:
                             if (name.indexOf('AMICO') >= 0) { amicoSrcs.push(src); }
                             else { pzwavSrcs.push(src); }
                         });
-                        var catredCat = A.catalog({name: 'CATRED', color: '#00ffff', shape: 'circle', sourceSize: 8});
                         var catredSrcs = (data.catred || []).map(function(r) {
                             return A.source(r.ra, r.dec, {name: r.name || 'CATRED'});
                         });
-                        var membersCat = A.catalog({name: 'Members', color: '#FFD700', shape: 'rhomb', sourceSize: 10});
                         var membersSrcs = (data.members || []).map(function(r) {
                             return A.source(r.ra, r.dec, {name: r.name || 'Member'});
                         });
 
-                        // Add catalogs on next animation frame so Aladin sky tiles can start loading first
-                        requestAnimationFrame(function() {
-                            if (pzwavSrcs.length) pzwavCat.addSources(pzwavSrcs);
-                            if (amicoSrcs.length) amicoCat.addSources(amicoSrcs);
+                        // Only add catalogs that have data (avoids empty entries in stack)
+                        if (pzwavSrcs.length) {
+                            var pzwavCat = A.catalog({name: 'PZWAV Clusters', color: '#ff6600', shape: 'x', sourceSize: 14});
+                            pzwavCat.addSources(pzwavSrcs);
                             aladin.addCatalog(pzwavCat);
+                            reg.catalogs.push(pzwavCat);
+                        }
+                        if (amicoSrcs.length) {
+                            var amicoCat = A.catalog({name: 'AMICO Clusters', color: '#ff6600', shape: 'cross', sourceSize: 14});
+                            amicoCat.addSources(amicoSrcs);
                             aladin.addCatalog(amicoCat);
-                            requestAnimationFrame(function() {
-                                if (catredSrcs.length) catredCat.addSources(catredSrcs);
-                                aladin.addCatalog(catredCat);
-                                if (membersSrcs.length) membersCat.addSources(membersSrcs);
-                                aladin.addCatalog(membersCat);
-                            });
-                        });
+                            reg.catalogs.push(amicoCat);
+                        }
+                        if (catredSrcs.length) {
+                            var catredCat = A.catalog({name: 'CATRED', color: '#00ffff', shape: 'circle', sourceSize: 8});
+                            catredCat.addSources(catredSrcs);
+                            aladin.addCatalog(catredCat);
+                            reg.catalogs.push(catredCat);
+                        }
+                        if (membersSrcs.length) {
+                            var membersCat = A.catalog({name: 'Members', color: '#FFD700', shape: 'rhomb', sourceSize: 10});
+                            membersCat.addSources(membersSrcs);
+                            aladin.addCatalog(membersCat);
+                            reg.catalogs.push(membersCat);
+                        }
                     }
 
                     var doInit = function() {
@@ -1338,7 +1360,8 @@ class UICallbacks:
                             window._aladinInstance.gotoRaDec(ra, dec);
                             window._aladinInstance.setFov(fov);
                             window._aladinInstance.setImageSurvey(survey);
-                            setupCatalogs(window._aladinInstance);
+                            clearTimeout(window._setupCatalogsTimer);
+                            window._setupCatalogsTimer = setTimeout(function() { setupCatalogs(window._aladinInstance); }, 50);
                         } else {
                             dbg('first init: waiting for #aladin-div to be sized');
                             // Wait for #aladin-div to be visible and sized before init
@@ -1381,7 +1404,8 @@ class UICallbacks:
                                     });
                                 } catch(e) {}
 
-                                setupCatalogs(inst);
+                                clearTimeout(window._setupCatalogsTimer);
+                                window._setupCatalogsTimer = setTimeout(function() { setupCatalogs(inst); }, 50);
                             }
                             tryInit();
                         }
