@@ -7,5 +7,6 @@ and handling all visualization-related operations.
 
 from .figures import FigureManager
 from .traces import TraceCreator
+from .trace_registry import TraceRegistry, TraceType
 
-__all__ = ["TraceCreator", "FigureManager"]
+__all__ = ["TraceCreator", "FigureManager", "TraceRegistry", "TraceType"]

@@ -24,7 +24,7 @@ try:
 except ImportError:
     DATA_LOADER_AVAILABLE = False
 
-from tests import create_test_config, create_test_data
+from cluster_visualization.tests import create_test_config, create_test_data
 
 
 class TestDataLoader(unittest.TestCase):

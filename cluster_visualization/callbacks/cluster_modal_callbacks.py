@@ -14,6 +14,7 @@ import plotly.graph_objs as go  # type: ignore[import]
 import dash
 from dash import Input, Output, State, callback_context, html
 from typing import Any, Dict, List, Optional, Tuple
+from cluster_visualization.src.visualization.trace_registry import TraceRegistry, TraceType
 from cluster_visualization.utils.magnitude import Magnitude
 
 
@@ -797,65 +798,27 @@ class ClusterModalCallbacks:
                         if mosaic_cutout_trace:
                             # Add mosaic traces to current figure with proper layering
                             if current_figure and "data" in current_figure:
-                                # Remove existing mosaic traces first
+                                # Remove existing mosaic cutout traces, then categorize and reassemble
                                 existing_traces = [
                                     trace
                                     for trace in current_figure["data"]
                                     if not (trace.get("name", "").startswith("MER-Mosaic cutout"))
                                 ]
 
-                                # Separate traces by type to maintain proper layering order
-                                polygon_traces = []
-                                mosaic_traces = []
-                                mask_overlay_traces = []
-                                catred_traces = []
-                                cluster_traces = []
-                                other_traces = []
-
+                                # Categorize all remaining traces by type
+                                categorized = {tt: [] for tt in TraceType}
+                                categorized[None] = []
                                 for trace in existing_traces:
-                                    trace_name = trace.get("name", "")
-                                    if "MER-Tile" in trace_name or (
-                                        "Tile" in trace_name
-                                        and (
-                                            "CORE" in trace_name
-                                            or "LEV1" in trace_name
-                                            or "MerTile" in trace_name
-                                        )
-                                    ):
-                                        polygon_traces.append(trace)
-                                    elif "Mosaic" in trace_name:
-                                        mosaic_traces.append(trace)
-                                    elif "Mask overlay" in trace_name:
-                                        mask_overlay_traces.append(trace)
-                                    elif "CATRED" in trace_name:
-                                        catred_traces.append(trace)
-                                    elif any(
-                                        keyword in trace_name
-                                        for keyword in ["Merged", "Tile", "clusters"]
-                                    ):
-                                        cluster_traces.append(trace)
-                                    else:
-                                        other_traces.append(trace)
+                                    classified = TraceRegistry.classify_trace(trace)
+                                    categorized[classified].append(trace)
 
-                                # Layer order: polygons (bottom) → mosaic → mosaic cutout → mask overlays → CATRED → other → cluster traces (top)
-                                new_data = (
-                                    polygon_traces
-                                    + mosaic_traces
-                                    + [mosaic_cutout_trace]
-                                    + mask_overlay_traces
-                                    + catred_traces
-                                    + other_traces
-                                    + cluster_traces
-                                )
-                                current_figure["data"] = new_data
+                                # Insert new mosaic cutout into MOSAIC bucket
+                                categorized[TraceType.MOSAIC].append(mosaic_cutout_trace)
 
-                                print(f"✓ Added mosaic cutout trace as 2nd layer from bottom")
-                                print(
-                                    f"   -> Layer order: {len(polygon_traces)} polygons, "
-                                    f"{len(mosaic_traces)} mosaics, 1 mosaic cutout, "
-                                    f"{len(mask_overlay_traces)} Mask overlay, {len(catred_traces)} CATRED, "
-                                    f"{len(other_traces)} other, {len(cluster_traces)} clusters (top)"
-                                )
+                                # Reassemble in layer order
+                                current_figure["data"] = TraceRegistry.assemble_in_layer_order(categorized)
+
+                                print(f"✓ Added mosaic cutout trace with proper layering")
                             else:
                                 print("⚠️  No current figure data to update")
                         else:
@@ -960,12 +923,15 @@ class ClusterModalCallbacks:
 
                 print(f"Debug catred_redshift_bin_width received: {catred_redshift_bin_width!r}")
                 
-                # Extract existing CATRED traces from current figure to preserve them
-                existing_catred_traces = self._extract_existing_catred_traces(current_figure)
-                existing_mosaic_traces = self._extract_existing_mosaic_traces(current_figure)
-                existing_mask_overlay_traces = self._extract_existing_mask_overlay_traces(
-                    current_figure
+                # Extract existing traces to preserve across re-render
+                _preserved = TraceRegistry.extract_traces(
+                    current_figure,
+                    {TraceType.CATRED, TraceType.MOSAIC, TraceType.MASK_OVERLAY, TraceType.MEMBERS},
                 )
+                existing_catred_traces = _preserved[TraceType.CATRED]
+                existing_mosaic_traces = _preserved[TraceType.MOSAIC]
+                existing_mask_overlay_traces = _preserved[TraceType.MASK_OVERLAY]
+                members_traces = _preserved[TraceType.MEMBERS]
 
                 # Load CATRED Box data
                 box_params = self.catred_handler._extract_box_data_from_cluster_click(
@@ -1043,19 +1009,8 @@ class ClusterModalCallbacks:
                         )
 
                 # Re-inject Members traces dropped by the full figure rebuild
-                members_traces = self._extract_existing_members_traces(current_figure)
                 for t in members_traces:
-                    if isinstance(t, dict):
-                        fig.add_trace(go.Scattergl(
-                            x=t.get("x", []), y=t.get("y", []),
-                            mode=t.get("mode", "markers"),
-                            marker=t.get("marker", {}),
-                            name=t.get("name", ""),
-                            customdata=t.get("customdata", None),
-                            hovertemplate=t.get("hovertemplate", None),
-                        ))
-                    else:
-                        fig.add_trace(t)
+                    fig.add_trace(t)
                 if members_traces:
                     print(f"Debug: Re-injected {len(members_traces)} Members trace(s) after CATRED box rebuild")
 
@@ -1722,171 +1677,6 @@ class ClusterModalCallbacks:
         tagged_df.to_csv(output_path, index=False)
         return len(tagged_df), len(tagged_df)
 
-    def _extract_existing_catred_traces(self, current_figure):
-        """Extract existing CATRED traces from current figure"""
-        existing_catred_traces = []
-        if current_figure and "data" in current_figure:
-            for trace in current_figure["data"]:
-                trace_name = ""
-                if isinstance(trace, dict):
-                    trace_name = trace.get("name", "")
-                elif hasattr(trace, "name"):
-                    trace_name = trace.name or ""
-
-                if trace_name and trace_name.startswith("CATRED"):
-                    if isinstance(trace, dict):
-                        # Convert dict to Scattergl object for consistency
-                        existing_trace = go.Scattergl(
-                            x=trace.get("x", []),
-                            y=trace.get("y", []),
-                            mode=trace.get("mode", "markers"),
-                            marker=trace.get("marker", {}),
-                            name=trace.get("name", "CATRED Data"),
-                            text=trace.get("text", []),
-                            customdata=trace.get("customdata", None),
-                            hovertemplate=trace.get("hovertemplate", None),
-                            hoverlabel=trace.get("hoverlabel", None),
-                            hoverinfo=trace.get("hoverinfo", "text"),
-                            legendgroup=trace.get("legendgroup", None),
-                            opacity=trace.get("opacity", None),
-                            showlegend=trace.get("showlegend", True),
-                            visible=trace.get("visible", True),
-                        )
-                        existing_catred_traces.append(existing_trace)
-                    else:
-                        existing_catred_traces.append(trace)
-                    print(f"Debug: Preserved existing CATRED trace: {trace_name}")
-        return existing_catred_traces
-
-    def _extract_existing_mosaic_traces(self, current_figure):
-        """Extract existing mosaic traces from current figure"""
-        existing_mosaic_traces = []
-        if current_figure and "data" in current_figure:
-            for trace in current_figure["data"]:
-                if (
-                    isinstance(trace, dict)
-                    and "name" in trace
-                    and trace["name"]
-                    and "Mosaic" in trace["name"]
-                ):
-                    # Preserve the original trace type (Image, Heatmap, etc.)
-                    trace_type = trace.get("type", "image")
-
-                    if trace_type == "image":
-                        existing_trace = go.Image(
-                            source=trace.get("source"),
-                            x0=trace.get("x0"),
-                            y0=trace.get("y0"),
-                            dx=trace.get("dx"),
-                            dy=trace.get("dy"),
-                            name=trace.get("name", "Mosaic Image"),
-                            opacity=trace.get("opacity", 1.0),
-                            layer=trace.get("layer", "below"),
-                        )
-                    elif trace_type == "heatmap":
-                        existing_trace = go.Heatmap(
-                            z=trace.get("z"),
-                            x=trace.get("x"),
-                            y=trace.get("y"),
-                            name=trace.get("name", "Mosaic Image"),
-                            opacity=trace.get("opacity", 1.0),
-                            colorscale=trace.get("colorscale", "gray"),
-                            showscale=trace.get("showscale", False),
-                        )
-                    else:
-                        # Keep original trace as-is for unknown types
-                        existing_trace = trace
-
-                    existing_mosaic_traces.append(existing_trace)
-                    print(
-                        f"Debug: Preserved existing mosaic trace: {trace['name']} (type: {trace_type})"
-                    )
-        return existing_mosaic_traces
-
-    def _extract_existing_mask_overlay_traces(self, current_figure):
-        """Extract existing mask overlay traces from current figure"""
-        existing_mask_overlay_traces = []
-        if current_figure and "data" in current_figure:
-            for trace in current_figure["data"]:
-                if (
-                    isinstance(trace, dict)
-                    and "name" in trace
-                    and trace["name"]
-                    and (
-                        "Mask overlay" in trace["name"]
-                        or "Inverted mask overlay" in trace["name"]
-                        or trace["name"] == "Mask Colorbar"
-                    )
-                ):
-                    # Preserve the original trace type (Image, Heatmap, etc.)
-                    trace_type = trace.get("type", "scatter")
-
-                    if trace_type == "scatter":
-                        if trace.get("name") == "Mask Colorbar":
-                            # Preserve marker config for colorbar-only scatter traces.
-                            existing_trace = go.Scatter(
-                                x=trace.get("x"),
-                                y=trace.get("y"),
-                                mode=trace.get("mode", "markers"),
-                                marker=trace.get("marker", {}),
-                                showlegend=trace.get("showlegend", False),
-                                hoverinfo=trace.get("hoverinfo", "skip"),
-                                name=trace.get("name", "Mask Colorbar"),
-                            )
-                        else:
-                            existing_trace = go.Scatter(
-                                x=trace.get("x"),
-                                y=trace.get("y"),
-                                mode=trace.get("mode", "lines"),
-                                fill=trace.get("fill", "toself"),
-                                fillcolor=trace.get("fillcolor", "rgba(0,0,0,0)"),
-                                line=trace.get("line", {}),
-                                name=trace.get("name", "Mask overlay"),
-                                showlegend=trace.get("showlegend", False),
-                                hoverinfo=trace.get("hoverinfo", "skip"),
-                                opacity=trace.get("opacity", 1.0),
-                            )
-                    elif trace_type == "image":
-                        existing_trace = go.Image(
-                            source=trace.get("source"),
-                            x0=trace.get("x0"),
-                            y0=trace.get("y0"),
-                            dx=trace.get("dx"),
-                            dy=trace.get("dy"),
-                            name=trace.get("name", "Mask overlay"),
-                            opacity=trace.get("opacity", 1.0),
-                            layer=trace.get("layer", "below"),
-                        )
-                    elif trace_type == "heatmap":
-                        existing_trace = go.Heatmap(
-                            z=trace.get("z"),
-                            x=trace.get("x"),
-                            y=trace.get("y"),
-                            name=trace.get("name", "Mask overlay"),
-                            opacity=trace.get("opacity", 1.0),
-                            colorscale=trace.get("colorscale", "gray"),
-                            showscale=trace.get("showscale", False),
-                        )
-                    else:
-                        # Keep original trace as-is for unknown types
-                        existing_trace = trace
-
-                    existing_mask_overlay_traces.append(existing_trace)
-                    print(
-                        f"Debug: Preserved existing mask overlay trace: {trace['name']} (type: {trace_type})"
-                    )
-        return existing_mask_overlay_traces
-
-    def _extract_existing_members_traces(self, current_figure):
-        """Extract existing Members traces from current figure to preserve them across rebuilds."""
-        result = []
-        if current_figure and "data" in current_figure:
-            for trace in current_figure["data"]:
-                name = trace.get("name", "") if isinstance(trace, dict) else getattr(trace, "name", "") or ""
-                if name.startswith("Members (ID"):
-                    result.append(trace)
-                    print(f"Debug: Preserved existing Members trace: {name}")
-        return result
 
     def _create_fallback_figure(self, traces, algorithm, free_aspect_ratio):
         """Fallback figure creation method"""

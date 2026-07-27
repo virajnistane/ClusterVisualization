@@ -11,6 +11,7 @@ This module handles all data loading operations including:
 
 import datetime
 import json
+import logging
 import os
 import pdb
 import pickle
@@ -20,6 +21,8 @@ import numpy as np
 import pandas as pd
 from astropy.io import fits
 import glob
+
+logger = logging.getLogger(__name__)
 
 try:
     from cluster_visualization.utils.disk_cache import DiskCache, get_default_cache
@@ -711,7 +714,7 @@ class DataLoader:
                     print(f"Warning: XML file not found in expected directories: {file}")
                     continue
 
-                print(f"Resolved detintile XML path: {xml_path}")
+                logger.debug(f"Resolved detintile XML path: {xml_path}")
                 dirpath = os.path.dirname(xml_path)
                 while dirpath and not os.path.exists(os.path.join(dirpath, "data/")):
                     parent_dir = os.path.dirname(dirpath)
@@ -723,7 +726,7 @@ class DataLoader:
                     print(f"Warning: Could not determine data directory for detintile XML: {xml_path}")
                     continue
 
-                print(f"Determined directory path for data/ dir: {dirpath}")
+                logger.debug(f"Determined directory path for data/ dir: {dirpath}")
 
                 tile_file = self.get_xml_element(
                     xml_path, "Data/SpatialInformation/DataContainer/FileName"
@@ -746,7 +749,7 @@ class DataLoader:
                 else:
                     _tile_id_list.append(tile_id)
 
-                print(f"DEBUG: tile_id_list: {_tile_id_list}")
+                logger.debug(f"tile_id_list: {_tile_id_list}")
 
                 # When loading BOTH algorithms, use composite key to avoid overwriting
                 # Format: "tileid" for single algorithm, "tileid_ALGORITHM" for BOTH

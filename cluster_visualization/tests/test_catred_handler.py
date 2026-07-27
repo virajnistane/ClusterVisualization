@@ -25,7 +25,7 @@ try:
 except ImportError:
     CATRED_HANDLER_AVAILABLE = False
 
-from tests import create_test_data
+from cluster_visualization.tests import create_test_data
 
 
 class TestCATREDHandler(unittest.TestCase):

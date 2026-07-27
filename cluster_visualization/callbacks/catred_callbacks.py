@@ -13,6 +13,7 @@ from dash import Input, Output, State, html
 import time
 
 from cluster_visualization.callbacks.utils import get_idclusters_array
+from cluster_visualization.src.visualization.trace_registry import TraceRegistry, TraceType
 from cluster_visualization.utils.profiler import TraceProfiler
 
 
@@ -216,25 +217,18 @@ class CATREDCallbacks:
                         data, relayout_data, catred_masked, threshold, maglim
                     )
 
-                # Extract existing CATRED traces from current figure to preserve them
-                existing_catred_traces = self._extract_existing_catred_traces(current_figure)
-
-                # 🆕 EXTRACT EXISTING MOSAIC TRACES TO PRESERVE THEM
-                existing_mosaic_traces = self._extract_existing_mosaic_traces(current_figure)
-
-                # 🆕 EXTRACT EXISTING MASK OVERLAY TRACES TO PRESERVE THEM
-                existing_mask_overlay_traces = self._extract_existing_mask_overlay_traces(
-                    current_figure
+                # Extract existing traces to preserve across re-render
+                _preserved = TraceRegistry.extract_traces(
+                    current_figure,
+                    {TraceType.CATRED, TraceType.MOSAIC, TraceType.MASK_OVERLAY},
                 )
+                existing_catred_traces = _preserved[TraceType.CATRED]
+                existing_mosaic_traces = _preserved[TraceType.MOSAIC]
+                existing_mask_overlay_traces = _preserved[TraceType.MASK_OVERLAY]
 
                 print(
-                    f"Debug: Found {len(existing_catred_traces)} existing CATRED traces to preserve"
-                )
-                print(
-                    f"Debug: Found {len(existing_mosaic_traces)} existing mosaic traces to preserve"
-                )
-                print(
-                    f"Debug: Found {len(existing_mask_overlay_traces)} existing mask overlay traces to preserve"
+                    f"Debug: Preserving {len(existing_catred_traces)} CATRED, "
+                    f"{len(existing_mosaic_traces)} Mosaic, {len(existing_mask_overlay_traces)} Mask traces"
                 )
 
                 # Create traces with the manually loaded CATRED data and existing traces
@@ -276,6 +270,18 @@ class CATREDCallbacks:
                         if self.figure_manager
                         else self._create_fallback_figure(traces, algorithm, free_aspect_ratio)
                     )
+
+                # Re-inject mosaic layout.images from previous figure
+                if current_figure and isinstance(current_figure, dict):
+                    prev_images = current_figure.get("layout", {}).get("images") or []
+                    mosaic_images = [
+                        img for img in prev_images
+                        if isinstance(img, dict) and img.get("name", "").startswith("Mosaic")
+                    ]
+                    if mosaic_images:
+                        existing_layout_images = list(fig.layout.images or [])
+                        fig.update_layout(images=existing_layout_images + mosaic_images)
+                        print(f"Debug: Re-injected {len(mosaic_images)} mosaic layout images after CATRED rebuild")
 
                 # Preserve zoom state
                 if self.figure_manager:
@@ -538,127 +544,6 @@ class CATREDCallbacks:
 
         return ra_range, dec_range
 
-    def _extract_existing_catred_traces(self, current_figure):
-        """Extract existing CATRED traces from current figure"""
-        existing_catred_traces = []
-        if current_figure and "data" in current_figure:
-            for trace in current_figure["data"]:
-                if (
-                    isinstance(trace, dict)
-                    and "name" in trace
-                    and trace["name"]
-                    and "CATRED" in trace["name"]
-                ):
-                    # Convert dict to Scattergl object for consistency
-                    existing_trace = go.Scattergl(
-                        x=trace.get("x", []),
-                        y=trace.get("y", []),
-                        mode=trace.get("mode", "markers"),
-                        marker=trace.get("marker", {}),
-                        name=trace.get("name", "CATRED Data"),
-                        text=trace.get("text", []),
-                        customdata=trace.get("customdata", None),
-                        hovertemplate=trace.get("hovertemplate", None),
-                        hoverlabel=trace.get("hoverlabel", None),
-                        hoverinfo=trace.get("hoverinfo", "text"),
-                        legendgroup=trace.get("legendgroup", None),
-                        opacity=trace.get("opacity", None),
-                        showlegend=trace.get("showlegend", True),
-                        visible=trace.get("visible", True),
-                    )
-                    existing_catred_traces.append(existing_trace)
-                    print(f"Debug: Preserved existing CATRED trace: {trace['name']}")
-        return existing_catred_traces
-
-    def _extract_existing_mosaic_traces(self, current_figure):
-        """Extract existing mosaic traces from current figure"""
-        existing_mosaic_traces = []
-        if current_figure and "data" in current_figure:
-            for trace in current_figure["data"]:
-                if (
-                    isinstance(trace, dict)
-                    and "name" in trace
-                    and trace["name"]
-                    and "Mosaic" in trace["name"]
-                ):
-                    # Preserve the original trace type (Image, Heatmap, etc.)
-                    trace_type = trace.get("type", "image")
-
-                    if trace_type == "image":
-                        existing_trace = go.Image(
-                            source=trace.get("source"),
-                            x0=trace.get("x0"),
-                            y0=trace.get("y0"),
-                            dx=trace.get("dx"),
-                            dy=trace.get("dy"),
-                            name=trace.get("name", "Mosaic Image"),
-                            opacity=trace.get("opacity", 1.0),
-                            layer=trace.get("layer", "below"),
-                        )
-                    elif trace_type == "heatmap":
-                        existing_trace = go.Heatmap(
-                            z=trace.get("z"),
-                            x=trace.get("x"),
-                            y=trace.get("y"),
-                            name=trace.get("name", "Mosaic Image"),
-                            opacity=trace.get("opacity", 1.0),
-                            colorscale=trace.get("colorscale", "gray"),
-                            showscale=trace.get("showscale", False),
-                        )
-                    else:
-                        # Keep original trace as-is for unknown types
-                        existing_trace = trace
-
-                    existing_mosaic_traces.append(existing_trace)
-                    print(
-                        f"Debug: Preserved existing mosaic trace: {trace['name']} (type: {trace_type})"
-                    )
-        return existing_mosaic_traces
-
-    def _extract_existing_mask_overlay_traces(self, current_figure):
-        """Extract existing mask overlay traces from current figure"""
-        existing_mask_overlay_traces = []
-        if current_figure and "data" in current_figure:
-            for trace in current_figure["data"]:
-                if (
-                    isinstance(trace, dict)
-                    and "name" in trace
-                    and trace["name"]
-                    and "Mask overlay" in trace["name"]
-                ):
-                    # Preserve the original trace type (Image, Heatmap, etc.)
-                    trace_type = trace.get("type", "image")
-
-                    if trace_type == "image":
-                        existing_trace = go.Image(
-                            source=trace.get("source"),
-                            x0=trace.get("x0"),
-                            y0=trace.get("y0"),
-                            dx=trace.get("dx"),
-                            dy=trace.get("dy"),
-                            name=trace.get("name", "Mosaic Image"),
-                            opacity=trace.get("opacity", 1.0),
-                            layer=trace.get("layer", "below"),
-                        )
-                    elif trace_type == "heatmap":
-                        existing_trace = go.Heatmap(
-                            z=trace.get("z"),
-                            x=trace.get("x"),
-                            y=trace.get("y"),
-                            name=trace.get("name", "Mosaic Image"),
-                            opacity=trace.get("opacity", 1.0),
-                            colorscale=trace.get("colorscale", "gray"),
-                            showscale=trace.get("showscale", False),
-                        )
-                    else:
-                        # Keep original trace as-is for unknown types
-                        existing_trace = trace
-
-                    existing_mask_overlay_traces.append(existing_trace)
-                    print(
-                        f"Debug: Preserved existing mask overlay trace: {trace['name']} (type: {trace_type})"
-                    )
-        return existing_mask_overlay_traces
 
     def _create_empty_phz_plot(self, message="Click on a CATRED data point to view its PHZ_PDF"):
         """Create empty PHZ_PDF plot with message"""

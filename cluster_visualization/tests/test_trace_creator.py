@@ -24,7 +24,7 @@ try:
 except ImportError:
     TRACE_CREATOR_AVAILABLE = False
 
-from tests import create_test_data
+from cluster_visualization.tests import create_test_data
 
 
 class TestTraceCreator(unittest.TestCase):
