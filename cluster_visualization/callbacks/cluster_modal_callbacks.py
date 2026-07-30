@@ -6,16 +6,20 @@ like cutout generation, PHZ analysis, and data export.
 """
 
 import dash  # type: ignore[import]
-import dash_bootstrap_components as dbc  # type: ignore[import]
+from dash import Input, Output, State, callback_context, html
+import dash_bootstrap_components as _dbc  # type: ignore[import]
 import numpy as np
 import os
 import pandas as pd
 import plotly.graph_objs as go  # type: ignore[import]
-import dash
-from dash import Input, Output, State, callback_context, html
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, cast
 from cluster_visualization.src.visualization.trace_registry import TraceRegistry, TraceType
 from cluster_visualization.utils.magnitude import Magnitude
+
+# NOTE: Pylance can resolve dbc component symbols (Alert/Card/Row/...) as modules in some
+# environments, producing false positives like "Module is not callable".
+# An explicit Any-typed alias preserves runtime behavior and silences those diagnostics.
+dbc: Any = _dbc
 
 
 class ClusterModalCallbacks:
@@ -806,11 +810,16 @@ class ClusterModalCallbacks:
                                 ]
 
                                 # Categorize all remaining traces by type
-                                categorized = {tt: [] for tt in TraceType}
-                                categorized[None] = []
+                                categorized: dict[TraceType, list] = {tt: [] for tt in TraceType}
+                                uncategorized: list[Any] = []
+
                                 for trace in existing_traces:
                                     classified = TraceRegistry.classify_trace(trace)
-                                    categorized[classified].append(trace)
+
+                                    if classified in categorized:
+                                        categorized[classified].append(trace)
+                                    else:
+                                        uncategorized.append(trace)
 
                                 # Insert new mosaic cutout into MOSAIC bucket
                                 categorized[TraceType.MOSAIC].append(mosaic_cutout_trace)
@@ -958,6 +967,7 @@ class ClusterModalCallbacks:
                 )
 
                 set_progress((80, "Building figure..."))
+                traces: List[Any] = []
                 if self.trace_creator:
                     traces = self.trace_creator.create_traces(
                         data,
@@ -1002,7 +1012,10 @@ class ClusterModalCallbacks:
                         if isinstance(img, dict) and img.get("name", "").startswith("Mosaic")
                     ]
                     if mosaic_images:
-                        existing_layout_images = list(fig.layout.images or [])
+                        existing_layout_images = list(
+                            # fig.layout.images or []
+                            fig.to_plotly_json().get("layout", {}).get("images", []) or []
+                        )
                         fig.update_layout(images=existing_layout_images + mosaic_images)
                         print(
                             f"Debug: Re-injected {len(mosaic_images)} mosaic layout images after CATRED box rebuild"
@@ -1678,7 +1691,12 @@ class ClusterModalCallbacks:
         return len(tagged_df), len(tagged_df)
 
 
-    def _create_fallback_figure(self, traces, algorithm, free_aspect_ratio):
+    def _create_fallback_figure(
+        self, 
+        traces: list, 
+        algorithm: str, 
+        free_aspect_ratio: bool
+    ) -> go.Figure:
         """Fallback figure creation method"""
         fig = go.Figure(traces)
 
@@ -2198,8 +2216,13 @@ class ClusterModalCallbacks:
         May be shorter than input if some IDs are not found in the searched tiles.
         """
         from astropy.io import fits as _fits
+        from astropy.io.fits.fitsrec import FITS_rec
 
-        _empty = (np.array([]), np.array([]), [], [], [], [], [], [], [])
+        _empty: tuple[
+            np.ndarray, np.ndarray, list, list, list, list, list, list, list
+        ] = (
+            np.array([]), np.array([]), [], [], [], [], [], [], []
+        )
 
         if not self.selected_cluster:
             return _empty
@@ -2253,34 +2276,42 @@ class ClusterModalCallbacks:
             fits_file = rows.iloc[0]["fits_file"]
             try:
                 with _fits.open(fits_file, mode="readonly", memmap=True) as hdul:
-                    tdata = hdul[1].data
-                    if "OBJECT_ID" not in tdata.names:
+                    if len(hdul) <= 1:
                         continue
-                    obj_ids = tdata["OBJECT_ID"]
+
+                    hdu1: Any = hdul[1]
+                    tdata = cast(Optional[FITS_rec], getattr(hdu1, "data", None))
+                    if tdata is None:
+                        continue
+
+                    names = tdata.names or []
+                    if "OBJECT_ID" not in names:
+                        continue
+                    obj_ids = np.asarray(tdata["OBJECT_ID"])
                     mask = np.isin(obj_ids, member_ids_arr)
                     if not np.any(mask):
                         continue
                     n_match = int(np.sum(mask))
-                    ra_all.append(tdata["RIGHT_ASCENSION"][mask])
-                    dec_all.append(tdata["DECLINATION"][mask])
+                    ra_all.append(np.asarray(tdata["RIGHT_ASCENSION"])[mask])
+                    dec_all.append(np.asarray(tdata["DECLINATION"])[mask])
                     phz_pdf_all.extend(
-                        tdata["PHZ_PDF"][mask].tolist() if "PHZ_PDF" in tdata.names
+                        np.asarray(tdata["PHZ_PDF"])[mask].tolist() if "PHZ_PDF" in names
                         else [None] * n_match
                     )
                     phz_mode1_all.extend(
-                        tdata["PHZ_MODE_1"][mask].tolist() if "PHZ_MODE_1" in tdata.names
+                        np.asarray(tdata["PHZ_MODE_1"])[mask].tolist() if "PHZ_MODE_1" in names
                         else [float("nan")] * n_match
                     )
                     phz_median_all.extend(
-                        tdata["PHZ_MEDIAN"][mask].tolist() if "PHZ_MEDIAN" in tdata.names
+                        np.asarray(tdata["PHZ_MEDIAN"])[mask].tolist() if "PHZ_MEDIAN" in names
                         else [float("nan")] * n_match
                     )
                     phz_70int_all.extend(
-                        tdata["PHZ_70_INT"][mask].tolist() if "PHZ_70_INT" in tdata.names
+                        np.asarray(tdata["PHZ_70_INT"])[mask].tolist() if "PHZ_70_INT" in names
                         else [None] * n_match
                     )
                     flux_h_unif_all.extend(
-                        tdata["FLUX_H_UNIF"][mask].tolist() if "FLUX_H_UNIF" in tdata.names
+                        np.asarray(tdata["FLUX_H_UNIF"])[mask].tolist() if "FLUX_H_UNIF" in names
                         else [float("nan")] * n_match
                     )
                     found_ids = obj_ids[mask].tolist()
@@ -2440,11 +2471,19 @@ class ClusterModalCallbacks:
             matched, data, err = _query_members(algorithm)
             if err:
                 return dbc.Alert(err, color="warning"), True, dash.no_update, dash.no_update, dash.no_update, dash.no_update
-            cluster_id = self.selected_cluster["merged_cluster_id"]
-            n_table = len(matched)
-            if n_table == 0 or "OBJECT_ID" not in matched.dtype.names:
+
+            if self.selected_cluster is None or matched is None or data is None:
+                return dbc.Alert("No cluster selected.", color="warning"), True, dash.no_update, dash.no_update, dash.no_update, dash.no_update
+
+            cluster_id = self.selected_cluster.get("merged_cluster_id")
+            if cluster_id is None:
+                return dbc.Alert("Cluster ID not resolved for selected point.", color="warning"), True, dash.no_update, dash.no_update, dash.no_update, dash.no_update
+
+            matched_arr = cast(np.ndarray, matched)
+            n_table = len(matched_arr)
+            if n_table == 0 or "OBJECT_ID" not in (matched_arr.dtype.names or ()): 
                 return _members_alert(n_table, 0, cluster_id), True, dash.no_update, dash.no_update, dash.no_update, dash.no_update
-            ra, dec, phz_pdf, phz_mode1, phz_median, phz_70int, pmem_zp, pmem_rs, flux_h_unif = self._fetch_member_radec(matched["OBJECT_ID"], data, matched=matched)
+            ra, dec, phz_pdf, phz_mode1, phz_median, phz_70int, pmem_zp, pmem_rs, flux_h_unif = self._fetch_member_radec(matched_arr["OBJECT_ID"], data, matched=matched_arr)
             n_plotted = len(ra)
             alert = _members_alert(n_table, n_plotted, cluster_id)
             if n_plotted == 0:
@@ -2495,11 +2534,19 @@ class ClusterModalCallbacks:
             matched, data, err = _query_members(algorithm)
             if err:
                 return dbc.Alert(err, color="warning"), dash.no_update, dash.no_update, dash.no_update, dash.no_update
-            cluster_id = self.selected_cluster["merged_cluster_id"]
-            n_table = len(matched)
-            if n_table == 0 or "OBJECT_ID" not in matched.dtype.names:
+
+            if self.selected_cluster is None or matched is None or data is None:
+                return dbc.Alert("No cluster selected.", color="warning"), dash.no_update, dash.no_update, dash.no_update, dash.no_update
+
+            cluster_id = self.selected_cluster.get("merged_cluster_id")
+            if cluster_id is None:
+                return dbc.Alert("Cluster ID not resolved for selected point.", color="warning"), dash.no_update, dash.no_update, dash.no_update, dash.no_update
+
+            matched_arr = cast(np.ndarray, matched)
+            n_table = len(matched_arr)
+            if n_table == 0 or "OBJECT_ID" not in (matched_arr.dtype.names or ()): 
                 return _members_alert(n_table, 0, cluster_id), dash.no_update, dash.no_update, dash.no_update, dash.no_update
-            ra, dec, phz_pdf, phz_mode1, z_member, phz_70int, pmem_zp, pmem_rs, flux_h_unif = self._fetch_member_radec(matched["OBJECT_ID"], data, matched=matched)
+            ra, dec, phz_pdf, phz_mode1, z_member, phz_70int, pmem_zp, pmem_rs, flux_h_unif = self._fetch_member_radec(matched_arr["OBJECT_ID"], data, matched=matched_arr)
             trace_name = f"Members (ID {int(cluster_id)})"
             if self.catred_handler:
                 if self.catred_handler.current_catred_data is None:
@@ -2588,7 +2635,7 @@ class ClusterModalCallbacks:
             if n_plotted == 0:
                 return alert, dash.no_update, dash.no_update, dash.no_update, dash.no_update
             color = marker_color or "#000000"
-            size = float(marker_size) if marker_size else 10.0
+            size = int(marker_size) if marker_size is not None else 10
             fig = go.Figure(current_figure)
             fig.add_trace(self._build_members_trace(ra, dec, cluster_id, color=color, size=size, pmem_zp=pmem_zp, pmem_rs=pmem_rs))
             existing_shapes = (current_figure or {}).get("layout", {}).get("shapes") or []
