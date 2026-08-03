@@ -306,11 +306,11 @@ class DataLoader:
         """Attempt to populate missing DetInTile list paths from merged catalog XML metadata."""
         assert self.config, "Configuration is not set"
 
-        gluematchcat_xml = self.config.get_gluematchcat_clusters_xml()
-        use_gluematchcat = gluematchcat_xml is not None and os.path.exists(gluematchcat_xml)
+        gluematchcat_clusters_xml = self.config.get_gluematchcat_clusters_xml()
+        use_gluematchcat = gluematchcat_clusters_xml is not None and os.path.exists(gluematchcat_clusters_xml)
 
         if use_gluematchcat:
-            self._set_detintile_paths_from_merged_xml(gluematchcat_xml)
+            self._set_detintile_paths_from_merged_xml(gluematchcat_clusters_xml)
             return
 
         mergedetcat_xml_files_dict: Dict[str, str] = self.config.get_mergedetcat_xml_files(algorithm)
@@ -1506,8 +1506,8 @@ class DataLoader:
         """Get list of source files for merged catalog (for cache invalidation)."""
         source_files = []
         if paths.get("use_gluematchcat"):
-            if os.path.exists(paths.get("gluematchcat_xml", "")):
-                source_files.append(paths["gluematchcat_xml"])
+            if os.path.exists(paths.get("gluematchcat_clusters_xml", "")):
+                source_files.append(paths["gluematchcat_clusters_xml"])
         else:
             for xml_path in paths.get("mergedetcat_xml_files_dict", {}).values():
                 if os.path.exists(xml_path):

@@ -168,8 +168,8 @@ class UICallbacks:
                 return True, "📁 File Config (Not Available)"
             
             # Check if gluematchcat_clusters is configured
-            gluematchcat_xml = self.config.get_gluematchcat_clusters_xml()
-            if gluematchcat_xml is None:
+            gluematchcat_clusters_xml = self.config.get_gluematchcat_clusters_xml()
+            if gluematchcat_clusters_xml is None:
                 return True, "📁 File Config (GlueMatchCat XML Not Configured)"
             
             return False, "📁 File Config"
@@ -279,8 +279,8 @@ class UICallbacks:
                 return True, "Configuration not available"
             
             # Check if gluematchcat_clusters is configured
-            gluematchcat_xml = self.config.get_gluematchcat_clusters_xml()
-            if gluematchcat_xml is None:
+            gluematchcat_clusters_xml = self.config.get_gluematchcat_clusters_xml()
+            if gluematchcat_clusters_xml is None:
                 return True, "GlueMatchCat XML file not configured in config.ini"
             
             return False, "Browse for file"
