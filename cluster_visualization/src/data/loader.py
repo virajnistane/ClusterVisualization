@@ -46,6 +46,28 @@ class DataLoader:
 
     NO_INDIVIDUAL_CLTILE_DATA_MESSAGE = "No individual CL-tile data available"
 
+    def _required_xml_text(self, xml_file: str, element_path: str) -> str:
+        """Return text for a required XML element or raise a clear error."""
+        element = self.get_xml_element(xml_file, element_path)
+        if element is None or element.text is None:
+            raise ValueError(f"Missing XML element '{element_path}' in file: {xml_file}")
+
+        value = element.text.strip()
+        if not value:
+            raise ValueError(
+                f"Empty XML text for element '{element_path}' in file: {xml_file}"
+            )
+        return value
+
+    def _optional_xml_text(self, xml_file: str, element_path: str) -> Optional[str]:
+        """Return text for an optional XML element, or None when absent/empty."""
+        element = self.get_xml_element(xml_file, element_path)
+        if element is None or element.text is None:
+            return None
+
+        value = element.text.strip()
+        return value if value else None
+
     def __init__(self, config=None, use_disk_cache=True, max_memory_gb=None):
         """
         Initialize DataLoader with configuration.
@@ -388,8 +410,8 @@ class DataLoader:
         assert self.config, "Configuration is not set"
 
         # Check if gluematchcat exists
-        gluematchcat_xml = self.config.get_gluematchcat_clusters_xml()
-        use_gluematchcat = gluematchcat_xml is not None and os.path.exists(gluematchcat_xml)
+        gluematchcat_clusters_xml = self.config.get_gluematchcat_clusters_xml()
+        use_gluematchcat = gluematchcat_clusters_xml is not None and os.path.exists(gluematchcat_clusters_xml)
 
         gluematchcat_members_xml = self.config.get_gluematchcat_members_xml()
         if gluematchcat_members_xml is not None and not os.path.exists(gluematchcat_members_xml):
@@ -415,7 +437,7 @@ class DataLoader:
             paths = {
                 "use_gluematchcat": True,
                 "gluematchcat_dir": self.config.gluematchcat_dir,
-                "gluematchcat_xml": gluematchcat_xml,
+                "gluematchcat_clusters_xml": gluematchcat_clusters_xml,
                 "gluematchcat_members_xml": gluematchcat_members_xml,
                 "mergedetcat_dir": self.config.mergedetcat_dir,
                 "detintile_dir": self.config.detintile_dir,
@@ -444,7 +466,7 @@ class DataLoader:
     def _validate_paths(self, paths: Dict[str, Any]) -> None:
         """Validate that critical paths exist."""
         if paths.get("use_gluematchcat"):
-            critical_paths = ["gluematchcat_xml", "gluematchcat_dir", "detintile_dir"]
+            critical_paths = ["gluematchcat_clusters_xml", "gluematchcat_dir", "detintile_dir"]
         else:
             critical_paths = ["mergedetcat_xml_files_dict", "mergedetcat_dir", "detintile_dir"]
 
@@ -485,14 +507,14 @@ class DataLoader:
         # Cache miss - load data
         if paths.get("use_gluematchcat"):
             # Load from gluematchcat
-            gluematchcat_xml = paths["gluematchcat_xml"]
-            if not os.path.exists(gluematchcat_xml):
-                raise FileNotFoundError(f"GlueMatchCat XML not found: {gluematchcat_xml}")
+            gluematchcat_clusters_xml = paths["gluematchcat_clusters_xml"]
+            if not os.path.exists(gluematchcat_clusters_xml):
+                raise FileNotFoundError(f"GlueMatchCat XML not found: {gluematchcat_clusters_xml}")
 
             # Extract FITS filename from XML
-            fits_filename = self.get_xml_element(
-                gluematchcat_xml, "Data/FullDetectionsFile/DataContainer/FileName"
-            ).text
+            fits_filename = self._required_xml_text(
+                gluematchcat_clusters_xml, "Data/FullDetectionsFile/DataContainer/FileName"
+            )
             fitsfile = os.path.join(paths["gluematchcat_dir"], "data", fits_filename)
 
             # Check if file exists, if not try without checking (will raise error with better message)
@@ -551,9 +573,9 @@ class DataLoader:
                     if not os.path.exists(det_xml):
                         raise FileNotFoundError(f"Merged detection XML not found: {det_xml}")
 
-                    fits_filename = self.get_xml_element(
+                    fits_filename = self._required_xml_text(
                         det_xml, "Data/ClustersFile/DataContainer/FileName"
-                    ).text
+                    )
                     fitsfile = os.path.join(paths["mergedetcat_dir"], "data", fits_filename)
 
                     print(f"Loading merged catalog from: {os.path.basename(fitsfile)}")
@@ -594,9 +616,9 @@ class DataLoader:
                 if not os.path.exists(det_xml):
                     raise FileNotFoundError(f"Merged detection XML not found: {det_xml}")
 
-                fits_filename = self.get_xml_element(
+                fits_filename = self._required_xml_text(
                     det_xml, "Data/ClustersFile/DataContainer/FileName"
-                ).text
+                )
                 fitsfile = os.path.join(paths["mergedetcat_dir"], "data", fits_filename)
 
                 print(f"Loading merged catalog from: {os.path.basename(fitsfile)}")
@@ -639,9 +661,10 @@ class DataLoader:
         """Extract paths to individual tile detection files from gluematched/merged catalog XML and set in config."""
 
         try:
-            detintile_pzwav_list = self.get_xml_element(
-                merged_catalog_xml, "Parameters/Parameter[Key='InputDetectionsFiles_PZWAV']/StringValue"
-            ).text
+            detintile_pzwav_list = self._required_xml_text(
+                merged_catalog_xml,
+                "Parameters/Parameter[Key='InputDetectionsFiles_PZWAV']/StringValue",
+            )
 
             resolved_pzwav_list = self._resolve_detintile_list_path(detintile_pzwav_list)
             if resolved_pzwav_list:
@@ -655,9 +678,10 @@ class DataLoader:
             print(f"Error occurred while setting detintile_pzwav_list: {e}")
 
         try:
-            detintile_amico_list = self.get_xml_element(
-                merged_catalog_xml, "Parameters/Parameter[Key='InputDetectionsFiles_AMICO']/StringValue"
-            ).text
+            detintile_amico_list = self._required_xml_text(
+                merged_catalog_xml,
+                "Parameters/Parameter[Key='InputDetectionsFiles_AMICO']/StringValue",
+            )
             resolved_amico_list = self._resolve_detintile_list_path(detintile_amico_list)
             if resolved_amico_list:
                 self.config.config_parser.set("files", "detintile_amico_list", resolved_amico_list)
@@ -728,9 +752,13 @@ class DataLoader:
 
                 logger.debug(f"Determined directory path for data/ dir: {dirpath}")
 
-                tile_file = self.get_xml_element(
-                    xml_path, "Data/SpatialInformation/DataContainer/FileName"
-                ).text
+                try:
+                    tile_file = self._required_xml_text(
+                        xml_path, "Data/SpatialInformation/DataContainer/FileName"
+                    )
+                except Exception as e:
+                    print(f"Warning: Invalid tile metadata in {xml_path}: {e}")
+                    continue
                 # Use {dirpath}/data for tile data (even when using gluematchcat for merged data)
                 tile_file_path = os.path.join(dirpath, "data", tile_file)
 
@@ -758,9 +786,13 @@ class DataLoader:
                 else:
                     tile_key = tile_id
 
-                fits_file = self.get_xml_element(
-                    xml_path, "Data/ClustersFile/DataContainer/FileName"
-                ).text
+                try:
+                    fits_file = self._required_xml_text(
+                        xml_path, "Data/ClustersFile/DataContainer/FileName"
+                    )
+                except Exception as e:
+                    print(f"Warning: Invalid cluster FITS metadata in {xml_path}: {e}")
+                    continue
                 # Load FITS data for this tile
                 fits_path = os.path.join(dirpath, "data", fits_file)
                 if not os.path.exists(fits_path):
@@ -819,8 +851,8 @@ class DataLoader:
 
     def _load_data_gluematchcat_members(self, paths: Dict[str, Any]) -> Optional[np.ndarray]:
         """Load GlueMatchCat member galaxies FITS from XML path, or return None if not configured."""
-        members_xml = paths.get("gluematchcat_members_xml")
-        if members_xml is None:
+        gluematchcat_members_xml = paths.get("gluematchcat_members_xml")
+        if gluematchcat_members_xml is None:
             return None
 
         gluematchcat_dir = paths.get("gluematchcat_dir")
@@ -829,9 +861,9 @@ class DataLoader:
             return None
 
         try:
-            fits_filename = self.get_xml_element(
-                members_xml, "Data/RichMembersFile/DataContainer/FileName"
-            ).text
+            fits_filename = self._required_xml_text(
+                gluematchcat_members_xml, "Data/RichMembersFile/DataContainer/FileName"
+            )
         except Exception as e:
             print(f"Warning: Could not extract members FITS filename from XML: {e}")
             return None
