@@ -513,16 +513,17 @@ class CATREDHandler:
 
         _t_stage2 = time.perf_counter()
 
-        # --- Stage 2: precise shapely intersection ---
+        # --- Stage 2: precise shapely intersection (vectorized) ---
+        from shapely import intersects as shapely_intersects
+
         zoom_box = box(ra_lo, dec_lo, ra_hi, dec_hi)
-        mertiles_to_load = []
-        none_poly_count = 0
-        for _, row in candidates.iterrows():
-            poly = row.get("polygon")
-            if poly is None:
-                none_poly_count += 1
-            elif poly.intersects(zoom_box):
-                mertiles_to_load.append(row["mertileid"])
+        polygons = candidates["polygon"].to_numpy()
+        valid = np.array([p is not None for p in polygons])
+        none_poly_count = int((~valid).sum())
+        intersects_mask = np.zeros(len(polygons), dtype=bool)
+        if valid.any():
+            intersects_mask[valid] = shapely_intersects(polygons[valid], zoom_box)
+        mertiles_to_load = candidates.loc[intersects_mask, "mertileid"].tolist()
 
         if none_poly_count > 0:
             print(f"Debug: Stage-2 skipped {none_poly_count}/{len(candidates)} tiles due to None polygons")

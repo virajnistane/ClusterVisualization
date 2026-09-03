@@ -1475,12 +1475,23 @@ class MOSAICHandler:
         grouped_y: List[List[Optional[float]]] = [[] for _ in range(n_bins)]
         grouped_count: List[int] = [0 for _ in range(n_bins)]
 
-        for pix, weight in zip(pixels, weights):
+        if len(pixels) == 0:
+            return []
+
+        # Batch all pixel boundaries into a single healpy call instead of one call per pixel.
+        import healpy as hp
+        pixels_arr = np.asarray(pixels, dtype=np.int64)
+        bounds = hp.boundaries(16384, pixels_arr, step=2, nest=True)  # (npix, 3, npts)
+        npix, _, npts = bounds.shape
+        flat = np.moveaxis(bounds, 1, 2).reshape(-1, 3)
+        ra_flat, dec_flat = hp.vec2ang(flat, lonlat=True)
+        ra_all = ra_flat.reshape(npix, npts)
+        dec_all = dec_flat.reshape(npix, npts)
+
+        for i, weight in enumerate(weights):
             # Build polygon directly in world coordinates
-            import healpy as hp
-            ra, dec = hp.vec2ang(hp.boundaries(16384, int(pix), step=2, nest=True).T, lonlat=True)
-            ra = np.append(ra, ra[0]).tolist()
-            dec = np.append(dec, dec[0]).tolist()
+            ra = np.append(ra_all[i], ra_all[i, 0]).tolist()
+            dec = np.append(dec_all[i], dec_all[i, 0]).tolist()
 
             weight_norm = (float(weight) - weight_min) / max(weight_max - weight_min, 1e-8)
             weight_norm = float(np.clip(weight_norm, 0.0, 1.0))
@@ -1537,11 +1548,22 @@ class MOSAICHandler:
         all_x: List[Optional[float]] = []
         all_y: List[Optional[float]] = []
 
+        if len(pixels) == 0:
+            return []
+
+        # Batch all pixel boundaries into a single healpy call instead of one call per pixel.
         import healpy as hp
-        for pix in pixels:
-            ra, dec = hp.vec2ang(hp.boundaries(16384, int(pix), step=2, nest=True).T, lonlat=True)
-            ra = np.append(ra, ra[0]).tolist()
-            dec = np.append(dec, dec[0]).tolist()
+        pixels_arr = np.asarray(pixels, dtype=np.int64)
+        bounds = hp.boundaries(16384, pixels_arr, step=2, nest=True)  # (npix, 3, npts)
+        npix, _, npts = bounds.shape
+        flat = np.moveaxis(bounds, 1, 2).reshape(-1, 3)
+        ra_flat, dec_flat = hp.vec2ang(flat, lonlat=True)
+        ra_all = ra_flat.reshape(npix, npts)
+        dec_all = dec_flat.reshape(npix, npts)
+
+        for i in range(npix):
+            ra = np.append(ra_all[i], ra_all[i, 0]).tolist()
+            dec = np.append(dec_all[i], dec_all[i, 0]).tolist()
             all_x.extend(ra + [None])
             all_y.extend(dec + [None])
 
