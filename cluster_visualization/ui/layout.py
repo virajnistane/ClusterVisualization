@@ -681,17 +681,19 @@ class AppLayout:
                         SidebarSections.create_snr_section(),
                         SidebarSections.create_richness_section(),
                         SidebarSections.create_idcluster_section(),
+                        SidebarSections.create_ned_specz_filter_section(),
                     ],
                     is_open=False,
                     color="primary",
                 ),
-                # Mask Section (CATRED controls + Healpix mask)
+                # Mask Section (CATRED controls + Healpix mask + NED spec-z)
                 AppLayout._create_collapsible_card(
                     "🎭 Mask",
                     "mask-controls",
                     [
                         DataControls.create_catred_data_section(),
                         DataControls.create_healpix_mask_section(),
+                        DataControls.create_ned_specz_section(),
                     ],
                     is_open=False,
                     color="warning",

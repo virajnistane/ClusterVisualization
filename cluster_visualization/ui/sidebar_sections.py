@@ -795,6 +795,37 @@ class SidebarSections:
         )
 
     @staticmethod
+    def create_ned_specz_filter_section():
+        """Create switch to restrict cluster points to those with a NED spec-z cross-match"""
+        return html.Div(
+            [
+                html.Div(
+                    [
+                        html.I(className="fas fa-check-double me-1 text-danger"),
+                        html.Label("Spec-z Verification Filtering:", className="fw-bold mb-1"),
+                    ],
+                    className="d-flex align-items-left mb-0",
+                ),
+                dbc.Card(
+                    dbc.CardBody(
+                        dbc.Switch(
+                            id="ned-specz-filter-switch",
+                            label="Only show clusters with spec-z verification",
+                            value=False,
+                            className="ms-1",
+                        ),
+                        className="p-3",
+                    ),
+                    className="border-0 shadow-sm",
+                    style={
+                        "background": "linear-gradient(135deg, #fff0f0, #ffffff)",
+                        "border-radius": "12px",
+                    },
+                ),
+            ]
+        )
+
+    @staticmethod
     def create_display_options_section():
         """Create display options section with enhanced styling"""
         return html.Div(

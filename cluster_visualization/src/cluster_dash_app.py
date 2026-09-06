@@ -146,6 +146,7 @@ if data_modules_path not in sys.path:
     sys.path.append(data_modules_path)
 
 from data.catred_handler import CATREDHandler
+from data.ned_handler import NEDHandler
 
 # Import data handling modules
 from data.loader import DataLoader
@@ -167,6 +168,7 @@ from callbacks.catred_callbacks import CATREDCallbacks
 from callbacks.cluster_modal_callbacks import ClusterModalCallbacks
 from callbacks.main_plot import MainPlotCallbacks
 from callbacks.mosaic_callback import MOSAICCallbacks
+from callbacks.ned_callbacks import NEDCallbacks
 from callbacks.phz_callbacks import PHZCallbacks
 from callbacks.ui_callbacks import UICallbacks
 
@@ -283,8 +285,14 @@ class ClusterVisualizationApp:
         self.mosaic_handler = MOSAICHandler(config)
         print("✓ Mosaic handler initialized")
 
+        # Initialize NED spec-z verification handler (inert if not configured)
+        self.ned_handler = NEDHandler(config)
+        print("✓ NED spec-z handler initialized")
+
         # Initialize visualization modules
-        self.trace_creator = TraceCreator(colors_list, colors_list_transparent, self.catred_handler)
+        self.trace_creator = TraceCreator(
+            colors_list, colors_list_transparent, self.catred_handler, self.ned_handler
+        )
         self.figure_manager = FigureManager()
         print("✓ Using modular visualization handlers")
 
@@ -359,6 +367,13 @@ class ClusterVisualizationApp:
                 app=self.app,
                 data_loader=self.data_loader,
                 catred_handler=self.catred_handler,
+            )
+
+            # NED spec-z verification display callbacks
+            self.ned_callbacks = NEDCallbacks(
+                app=self.app,
+                ned_handler=self.ned_handler,
+                figure_manager=self.figure_manager,
             )
 
             print("✓ All modular callbacks initialized")

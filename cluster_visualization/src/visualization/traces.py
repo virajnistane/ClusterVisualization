@@ -28,7 +28,9 @@ StructuredArray = NDArray[np.void]
 class TraceCreator:
     """Handles creation of all Plotly traces for cluster visualization."""
 
-    def __init__(self, colors_list=None, colors_list_transparent=None, catred_handler=None):
+    def __init__(
+        self, colors_list=None, colors_list_transparent=None, catred_handler=None, ned_handler=None
+    ):
         """
         Initialize TraceCreator with color schemes and CATRED handler.
 
@@ -36,12 +38,14 @@ class TraceCreator:
             colors_list: List of colors for tile traces
             colors_list_transparent: List of transparent colors for polygon fills
             catred_handler: CATRED handler instance for trace caching
+            ned_handler: NEDHandler instance for spec-z cluster filtering (optional)
         """
         self.colors_list = colors_list or self._get_default_colors()
         self.colors_list_transparent = (
             colors_list_transparent or self._get_default_transparent_colors()
         )
         self.catred_handler = catred_handler
+        self.ned_handler = ned_handler
 
         # Proximity detection state (spatial index + caches) lives here
         self.proximity_detector = CatredProximityDetector()
@@ -67,6 +71,7 @@ class TraceCreator:
         existing_catred_traces: Optional[List] = None,
         existing_mosaic_traces: Optional[List] = None,
         existing_mask_overlay_traces: Optional[List] = None,
+        existing_ned_specz_traces: Optional[List] = None,
         snr_threshold_lower_pzwav: Optional[float] = None,
         snr_threshold_upper_pzwav: Optional[float] = None,
         snr_threshold_lower_amico: Optional[float] = None,
@@ -83,6 +88,7 @@ class TraceCreator:
         flag_quality_zp: Optional[List[int]] = None,
         flag_quality_rs: Optional[List[int]] = None,
         idcluster_list: Optional[List[int]] = None,
+        ned_specz_filter: bool = False,
         angular_tolerance: float = 2.0,
         z_tolerance: float = 0.02,
         threshold: float = 0.8,
@@ -144,6 +150,10 @@ class TraceCreator:
             print(
                 "Debug: ID-cluster based filtering skipped - either not using gluematchcat or idcluster_list is None"
             )
+
+        datamod_detcluster_mergedcat = self._apply_ned_specz_filtering(
+            datamod_detcluster_mergedcat, ned_specz_filter
+        )
 
         # Check zoom threshold for CATRED data display
         zoom_threshold_met = self._check_zoom_threshold(relayout_data, show_mer_tiles)
@@ -243,6 +253,11 @@ class TraceCreator:
                 f"Debug: Preserving {len(mask_overlay_traces)} existing mask overlay traces in layer order"
             )
 
+        # Prepare NED spec-z traces (preserve existing ones)
+        ned_specz_traces = existing_ned_specz_traces or []
+        if ned_specz_traces:
+            print(f"Debug: Preserving {len(ned_specz_traces)} existing NED spec-z traces in layer order")
+
         # Combine in proper layer order: polygons (bottom) → mosaics → CATRED → clusters (top)
         # This ensures cluster traces are always on top of mosaic and CATRED traces
 
@@ -264,7 +279,14 @@ class TraceCreator:
                 print(f"Warning: Could not persist CATRED data to state cache: {_exc}")
             self._profiler.record("create_traces:diskcache", time.perf_counter() - _t)
 
-        _result = traces + mosaic_traces + mask_overlay_traces + catred_traces + cluster_traces
+        _result = (
+            traces
+            + mosaic_traces
+            + mask_overlay_traces
+            + catred_traces
+            + ned_specz_traces
+            + cluster_traces
+        )
         self._profiler.record("create_traces:total", time.perf_counter() - _t_create)
         self._profiler.tick_render()
         return _result
@@ -515,8 +537,28 @@ class TraceCreator:
             print(f"Error applying IDCLUSTER filtering: {e}")
             print(f"IDCLUSTER list provided: {idcluster_list}")
             return cluster_data
-        
+
         return filtered_data
+
+    def _apply_ned_specz_filtering(
+        self,
+        cluster_data: np.ndarray,
+        filter_active: bool,
+    ) -> np.ndarray:
+        """Restrict cluster points to those with a NED spec-z cross-match.
+
+        No-op (returns cluster_data unchanged) if the switch is off or no
+        NED catalog is configured/loaded.
+        """
+        if not filter_active or self.ned_handler is None or not self.ned_handler.is_available():
+            return cluster_data
+
+        try:
+            mask = np.isin(cluster_data["ID_UNIQUE_CLUSTER"], self.ned_handler.get_unique_cluster_ids())
+            return cluster_data[mask]
+        except Exception as e:
+            print(f"Error applying NED spec-z filtering: {e}")
+            return cluster_data
 
     def _check_zoom_threshold(self, relayout_data: Optional[Dict], show_mer_tiles: bool) -> bool:
         """Check if zoom level meets threshold for CATRED data display (< 2 degrees)."""
