@@ -948,6 +948,21 @@ class DataLoader:
                 catred_polygon_info = pickle.load(f)
             catred_fileinfo_df["polygon"] = pd.Series(catred_polygon_info)
             print("Loaded catred polygons")
+
+            # Diagnostic: Check pickle structure and alignment
+            if isinstance(catred_polygon_info, dict):
+                print(f"Debug: Polygon pickle structure - dict with {len(catred_polygon_info)} entries")
+                sample_keys = list(catred_polygon_info.keys())[:3]
+                print(f"Debug: Sample pickle keys: {sample_keys} (type: {type(sample_keys[0]) if sample_keys else 'N/A'})")
+                print(f"Debug: DataFrame has {len(catred_fileinfo_df)} rows with indices {catred_fileinfo_df.index[:3].tolist()}")
+
+                # Check alignment
+                none_count = catred_fileinfo_df["polygon"].isna().sum()
+                if none_count > 0:
+                    print(f"Warning: {none_count}/{len(catred_fileinfo_df)} tiles have None polygons after pickle load")
+                    if "mertileid" in catred_fileinfo_df.columns:
+                        missing_ids = catred_fileinfo_df[catred_fileinfo_df["polygon"].isna()]["mertileid"].tolist()[:10]
+                        print(f"Debug: Sample mertileids with missing polygons: {missing_ids}")
         elif not catred_fileinfo_df.empty or regenerate:
             print(
                 f"catred polygons not found at {catred_polygon_pkl} or regeneration requested. Generating polygons."
@@ -955,6 +970,14 @@ class DataLoader:
             catred_fileinfo_df = self._generate_catred_polygons(catred_fileinfo_df, paths)
         else:
             print("Warning: Cannot generate polygons - catred_fileinfo_df is empty")
+
+        # Validate polygon coverage
+        if not catred_fileinfo_df.empty and "polygon" in catred_fileinfo_df.columns:
+            polygon_coverage = (1 - catred_fileinfo_df["polygon"].isna().sum() / len(catred_fileinfo_df)) * 100
+            print(f"Debug: Polygon coverage: {polygon_coverage:.1f}%")
+
+            if polygon_coverage < 95:
+                print(f"Warning: Low polygon coverage ({polygon_coverage:.1f}%) - consider regenerating polygons")
 
         # Save to disk cache
         if self.use_disk_cache and not catred_fileinfo_df.empty and self.disk_cache is not None:

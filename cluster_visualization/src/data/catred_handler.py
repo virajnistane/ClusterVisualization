@@ -499,15 +499,33 @@ class CATREDHandler:
 
         self._profiler.record("catred:find_tiles:stage1", time.perf_counter() - _t_stage1)
 
+        # Diagnostic: Check for None polygons in stage-1 candidates
+        if "polygon" in candidates.columns:
+            none_polygons = candidates[candidates["polygon"].isna()]
+            if not none_polygons.empty:
+                print(f"Debug: {len(none_polygons)}/{len(candidates)} stage-1 candidates have None polygons")
+                print(f"Debug: Missing polygon mertileids: {none_polygons['mertileid'].tolist()[:10]}")
+            else:
+                print(f"Debug: All {len(candidates)} stage-1 candidates have valid polygons")
+        else:
+            print(f"Debug: WARNING - 'polygon' column missing from candidates DataFrame!")
+            print(f"Debug: Available columns: {list(candidates.columns)}")
+
         _t_stage2 = time.perf_counter()
 
         # --- Stage 2: precise shapely intersection ---
         zoom_box = box(ra_lo, dec_lo, ra_hi, dec_hi)
         mertiles_to_load = []
+        none_poly_count = 0
         for _, row in candidates.iterrows():
             poly = row.get("polygon")
-            if poly is not None and poly.intersects(zoom_box):
+            if poly is None:
+                none_poly_count += 1
+            elif poly.intersects(zoom_box):
                 mertiles_to_load.append(row["mertileid"])
+
+        if none_poly_count > 0:
+            print(f"Debug: Stage-2 skipped {none_poly_count}/{len(candidates)} tiles due to None polygons")
 
         self._profiler.record("catred:find_tiles:stage2", time.perf_counter() - _t_stage2)
 
