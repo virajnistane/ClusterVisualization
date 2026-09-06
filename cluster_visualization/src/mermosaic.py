@@ -931,6 +931,7 @@ class MOSAICHandler:
     ) -> List[int]:
         """Find MER tiles whose polygons intersect with the zoom box."""
         from shapely.geometry import box
+        from shapely import intersects as shapely_intersects
         # Normalise — callers may pass reversed RA from Plotly reversed axis
         ra_lo = min(ra_min, ra_max) # type: ignore
         ra_hi = max(ra_min, ra_max) # type: ignore
@@ -944,17 +945,41 @@ class MOSAICHandler:
             print("Warning: No catred_info found in data for tile intersection")
             return mertiles_to_load
 
-        for uid, row in (
-            data["catred_info"]
-            .loc[data["catred_info"]["dataset_release"] == data.get("catred_dsr", None)]
-            .iterrows()
-        ):
-            mertileid = row["mertileid"]
-            poly = row["polygon"]
-            if poly is not None:
-                # Use proper geometric intersection
-                if poly.intersects(zoom_box):
-                    mertiles_to_load.append(mertileid)
+        dsr_df = data["catred_info"].loc[
+            data["catred_info"]["dataset_release"] == data.get("catred_dsr", None)
+        ]
+
+        # Stage 1: cheap bbox pre-filter (mirrors catred_handler.py)
+        # Margin accounts for tile centers lying outside the viewport while
+        # their polygon extent still overlaps it.
+        margin = 1.0
+        if "ra_center" in dsr_df.columns and "dec_center" in dsr_df.columns:
+            pre_mask = (
+                (dsr_df["ra_center"] >= ra_lo - margin)
+                & (dsr_df["ra_center"] <= ra_hi + margin)
+                & (dsr_df["dec_center"] >= dec_lo - margin)
+                & (dsr_df["dec_center"] <= dec_hi + margin)
+            )
+            candidates = dsr_df[pre_mask]
+        elif "polygon" in dsr_df.columns:
+            def _bbox_overlaps(poly):
+                if poly is None:
+                    return False
+                b = poly.bounds  # (minx, miny, maxx, maxy)
+                return b[2] >= ra_lo and b[0] <= ra_hi and b[3] >= dec_lo and b[1] <= dec_hi
+
+            pre_mask = dsr_df["polygon"].apply(_bbox_overlaps)
+            candidates = dsr_df[pre_mask]
+        else:
+            candidates = dsr_df
+
+        # Stage 2: precise shapely intersection (vectorized)
+        polygons = candidates["polygon"].to_numpy()
+        valid = np.array([p is not None for p in polygons])
+        intersects_mask = np.zeros(len(polygons), dtype=bool)
+        if valid.any():
+            intersects_mask[valid] = shapely_intersects(polygons[valid], zoom_box)
+        mertiles_to_load = candidates.loc[intersects_mask, "mertileid"].tolist()
 
         print(
             f"Debug: Found {len(mertiles_to_load)} MER tiles with mosaics in zoom area: "

@@ -620,7 +620,7 @@ class SidebarSections:
                         dbc.Switch(
                             id="richness-include-missing-rs",
                             label="Include clusters with missing richness (RS)",
-                            value=True,
+                            value=False,
                             className="mb-2",
                         ),
                         # Apply button
