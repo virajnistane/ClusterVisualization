@@ -306,9 +306,14 @@ class MainPlotCallbacks:
                 State("matching-clusters-switch", "value"),
                 State("snr-range-slider-pzwav", "value"),
                 State("snr-range-slider-amico", "value"),
+                State("snr-include-missing-pzwav", "value"),
+                State("snr-include-missing-amico", "value"),
                 State("redshift-range-slider", "value"),
+                State("redshift-include-missing", "value"),
                 State("richness-range-slider-zp", "value"),
                 State("richness-range-slider-rs", "value"),
+                State("richness-include-missing-zp", "value"),
+                State("richness-include-missing-rs", "value"),
                 State("richness-mode-radio", "value"),
                 State("flag-quality-zp-checklist", "value"),
                 State("flag-quality-rs-checklist", "value"),
@@ -356,9 +361,14 @@ class MainPlotCallbacks:
             matching_clusters,
             snr_range_pzwav,
             snr_range_amico,
+            snr_include_missing_pzwav,
+            snr_include_missing_amico,
             redshift_range,
+            redshift_include_missing,
             richness_range_zp,
             richness_range_rs,
+            richness_include_missing_zp,
+            richness_include_missing_rs,
             richness_mode,
             flag_quality_zp,
             flag_quality_rs,
@@ -425,6 +435,13 @@ class MainPlotCallbacks:
                     richness_lower = None
                     richness_upper = None
 
+                if richness_mode == "zp":
+                    richness_include_missing = richness_include_missing_zp
+                elif richness_mode == "rs":
+                    richness_include_missing = richness_include_missing_rs
+                else:
+                    richness_include_missing = True
+
                 idcluster_list = None
                 if idcluster_upload_contents and idcluster_upload_filename:
                     set_progress((10, f"Processing uploaded cluster IDs from {idcluster_upload_filename}..."))
@@ -450,11 +467,15 @@ class MainPlotCallbacks:
                     snr_threshold_upper_pzwav=snr_pzwav_upper,
                     snr_threshold_lower_amico=snr_amico_lower,
                     snr_threshold_upper_amico=snr_amico_upper,
+                    snr_include_missing_pzwav=snr_include_missing_pzwav,
+                    snr_include_missing_amico=snr_include_missing_amico,
                     z_threshold_lower=z_lower,
                     z_threshold_upper=z_upper,
+                    z_include_missing=redshift_include_missing,
                     richness_threshold_lower=richness_lower,
                     richness_threshold_upper=richness_upper,
                     richness_mode=richness_mode,
+                    richness_include_missing=richness_include_missing,
                     flag_quality_zp=flag_quality_zp,
                     flag_quality_rs=flag_quality_rs,
                     idcluster_list=idcluster_list,
@@ -507,6 +528,9 @@ class MainPlotCallbacks:
                         snr_amico_upper,
                         z_lower,
                         z_upper,
+                        snr_include_missing_pzwav=snr_include_missing_pzwav,
+                        snr_include_missing_amico=snr_include_missing_amico,
+                        z_include_missing=redshift_include_missing,
                     )
                     # For status display in BOTH mode, show both SNR ranges
                     snr_lower_display = (
@@ -526,6 +550,8 @@ class MainPlotCallbacks:
                         snr_pzwav_upper,
                         z_lower,
                         z_upper,
+                        snr_include_missing=snr_include_missing_pzwav,
+                        z_include_missing=redshift_include_missing,
                     )
                     snr_lower_display = snr_pzwav_lower
                     snr_upper_display = snr_pzwav_upper
@@ -536,6 +562,8 @@ class MainPlotCallbacks:
                         snr_amico_upper,
                         z_lower,
                         z_upper,
+                        snr_include_missing=snr_include_missing_amico,
+                        z_include_missing=redshift_include_missing,
                     )
                     snr_lower_display = snr_amico_lower
                     snr_upper_display = snr_amico_upper
@@ -595,6 +623,11 @@ class MainPlotCallbacks:
                 Input("cltile-info-switch", "value"),
                 Input("catred-mode-switch", "value"),
                 Input("richness-mode-radio", "value"),
+                Input("snr-include-missing-pzwav", "value"),
+                Input("snr-include-missing-amico", "value"),
+                Input("redshift-include-missing", "value"),
+                Input("richness-include-missing-zp", "value"),
+                Input("richness-include-missing-rs", "value"),
             ],
             [
                 State("render-button", "n_clicks"),
@@ -625,6 +658,11 @@ class MainPlotCallbacks:
             show_cltile_info,
             catred_masked,
             richness_mode,
+            snr_include_missing_pzwav,
+            snr_include_missing_amico,
+            redshift_include_missing,
+            richness_include_missing_zp,
+            richness_include_missing_rs,
             n_clicks,
             matching_clusters,
             snr_range_pzwav,
@@ -688,6 +726,13 @@ class MainPlotCallbacks:
                     richness_lower = None
                     richness_upper = None
 
+                if richness_mode == "zp":
+                    richness_include_missing = richness_include_missing_zp
+                elif richness_mode == "rs":
+                    richness_include_missing = richness_include_missing_rs
+                else:
+                    richness_include_missing = True
+
                 # Process uploaded ID cluster list if provided
                 if idcluster_upload_contents:
                     idcluster_list = get_idclusters_array(idcluster_upload_contents, idcluster_upload_filename)
@@ -726,11 +771,15 @@ class MainPlotCallbacks:
                     snr_threshold_upper_pzwav=snr_pzwav_upper,
                     snr_threshold_lower_amico=snr_amico_lower,
                     snr_threshold_upper_amico=snr_amico_upper,
+                    snr_include_missing_pzwav=snr_include_missing_pzwav,
+                    snr_include_missing_amico=snr_include_missing_amico,
                     z_threshold_lower=z_lower,
                     z_threshold_upper=z_upper,
+                    z_include_missing=redshift_include_missing,
                     richness_threshold_lower=richness_lower,
                     richness_threshold_upper=richness_upper,
                     richness_mode=richness_mode,
+                    richness_include_missing=richness_include_missing,
                     flag_quality_zp=flag_quality_zp,
                     flag_quality_rs=flag_quality_rs,
                     idcluster_list=idcluster_list,
@@ -775,6 +824,9 @@ class MainPlotCallbacks:
                         snr_amico_upper,
                         z_lower,
                         z_upper,
+                        snr_include_missing_pzwav=snr_include_missing_pzwav,
+                        snr_include_missing_amico=snr_include_missing_amico,
+                        z_include_missing=redshift_include_missing,
                     )
                     # For status display in BOTH mode, show both SNR ranges
                     snr_lower_display = (
@@ -794,6 +846,8 @@ class MainPlotCallbacks:
                         snr_pzwav_upper,
                         z_lower,
                         z_upper,
+                        snr_include_missing=snr_include_missing_pzwav,
+                        z_include_missing=redshift_include_missing,
                     )
                     snr_lower_display = snr_pzwav_lower
                     snr_upper_display = snr_pzwav_upper
@@ -804,6 +858,8 @@ class MainPlotCallbacks:
                         snr_amico_upper,
                         z_lower,
                         z_upper,
+                        snr_include_missing=snr_include_missing_amico,
+                        z_include_missing=redshift_include_missing,
                     )
                     snr_lower_display = snr_amico_lower
                     snr_upper_display = snr_amico_upper
@@ -1495,33 +1551,44 @@ class MainPlotCallbacks:
         return error_fig, error_phz_fig, error_status
 
 
-    def _calculate_filtered_count(self, cluster_data, snr_lower, snr_upper, z_lower, z_upper):
-        """Calculate filtered cluster count based on SNR range"""
-        if snr_lower is None and snr_upper is None:
-            cluster_data_1 = cluster_data
-        elif snr_lower is not None and snr_upper is not None:
-            cluster_data_1 = cluster_data[
-                (cluster_data["SNR_CLUSTER"] >= snr_lower)
-                & (cluster_data["SNR_CLUSTER"] <= snr_upper)
-            ]
-        elif snr_upper is not None and snr_lower is None:
-            cluster_data_1 = cluster_data[cluster_data["SNR_CLUSTER"] <= snr_upper]
-        elif snr_lower is not None and snr_upper is None:
-            cluster_data_1 = cluster_data[cluster_data["SNR_CLUSTER"] >= snr_lower]
+    def _calculate_filtered_count(
+        self,
+        cluster_data,
+        snr_lower,
+        snr_upper,
+        z_lower,
+        z_upper,
+        snr_include_missing=True,
+        z_include_missing=True,
+    ):
+        """Calculate filtered cluster count based on SNR and redshift range"""
+        cluster_data_1 = cluster_data
+        if snr_lower is not None or snr_upper is not None:
+            snr_col = cluster_data["SNR_CLUSTER"]
+            if snr_lower is not None and snr_upper is not None:
+                snr_mask = (snr_col >= snr_lower) & (snr_col <= snr_upper)
+            elif snr_upper is not None:
+                snr_mask = snr_col <= snr_upper
+            else:
+                snr_mask = snr_col >= snr_lower
+            if snr_include_missing:
+                snr_mask = snr_mask | np.isnan(snr_col)
+            cluster_data_1 = cluster_data[snr_mask]
 
         if z_lower is None and z_upper is None:
             return len(cluster_data_1)
-        elif z_lower is not None and z_upper is not None:
-            return len(
-                cluster_data_1[
-                    (cluster_data_1["Z_CLUSTER"] >= z_lower)
-                    & (cluster_data_1["Z_CLUSTER"] <= z_upper)
-                ]
-            )
-        elif z_upper is not None and z_lower is None:
-            return len(cluster_data_1[cluster_data_1["Z_CLUSTER"] <= z_upper])
-        elif z_lower is not None and z_upper is None:
-            return len(cluster_data_1[cluster_data_1["Z_CLUSTER"] >= z_lower])
+
+        z_col = cluster_data_1["Z_CLUSTER"]
+        if z_lower is not None and z_upper is not None:
+            z_mask = (z_col >= z_lower) & (z_col <= z_upper)
+        elif z_upper is not None:
+            z_mask = z_col <= z_upper
+        else:
+            z_mask = z_col >= z_lower
+        if z_include_missing:
+            z_mask = z_mask | np.isnan(z_col)
+
+        return len(cluster_data_1[z_mask])
 
     def _calculate_filtered_count_both(
         self,
@@ -1532,6 +1599,9 @@ class MainPlotCallbacks:
         snr_amico_upper,
         z_lower,
         z_upper,
+        snr_include_missing_pzwav=True,
+        snr_include_missing_amico=True,
+        z_include_missing=True,
     ):
         """Calculate filtered cluster count for BOTH mode with separate SNR ranges"""
         # Filter PZWAV clusters (DET_CODE_NB == 2)
@@ -1540,10 +1610,11 @@ class MainPlotCallbacks:
         else:
             pzwav_data = cluster_data
         if snr_pzwav_lower is not None and snr_pzwav_upper is not None:
-            pzwav_data = pzwav_data[
-                (pzwav_data["SNR_CLUSTER"] >= snr_pzwav_lower)
-                & (pzwav_data["SNR_CLUSTER"] <= snr_pzwav_upper)
-            ]
+            pzwav_snr = pzwav_data["SNR_CLUSTER"]
+            pzwav_mask = (pzwav_snr >= snr_pzwav_lower) & (pzwav_snr <= snr_pzwav_upper)
+            if snr_include_missing_pzwav:
+                pzwav_mask = pzwav_mask | np.isnan(pzwav_snr)
+            pzwav_data = pzwav_data[pzwav_mask]
 
         # Filter AMICO clusters (DET_CODE_NB == 1)
         if "DET_CODE_NB" in cluster_data.dtype.names:
@@ -1551,23 +1622,27 @@ class MainPlotCallbacks:
         else:
             amico_data = cluster_data[:0]  # empty — avoid double-counting when column absent
         if snr_amico_lower is not None and snr_amico_upper is not None:
-            amico_data = amico_data[
-                (amico_data["SNR_CLUSTER"] >= snr_amico_lower)
-                & (amico_data["SNR_CLUSTER"] <= snr_amico_upper)
-            ]
+            amico_snr = amico_data["SNR_CLUSTER"]
+            amico_mask = (amico_snr >= snr_amico_lower) & (amico_snr <= snr_amico_upper)
+            if snr_include_missing_amico:
+                amico_mask = amico_mask | np.isnan(amico_snr)
+            amico_data = amico_data[amico_mask]
 
         # Combine filtered data
         combined_data = np.concatenate([pzwav_data, amico_data])
 
         # Apply redshift filter
-        if z_lower is not None and z_upper is not None:
-            combined_data = combined_data[
-                (combined_data["Z_CLUSTER"] >= z_lower) & (combined_data["Z_CLUSTER"] <= z_upper)
-            ]
-        elif z_lower is not None:
-            combined_data = combined_data[combined_data["Z_CLUSTER"] >= z_lower]
-        elif z_upper is not None:
-            combined_data = combined_data[combined_data["Z_CLUSTER"] <= z_upper]
+        if z_lower is not None or z_upper is not None:
+            z_col = combined_data["Z_CLUSTER"]
+            if z_lower is not None and z_upper is not None:
+                z_mask = (z_col >= z_lower) & (z_col <= z_upper)
+            elif z_lower is not None:
+                z_mask = z_col >= z_lower
+            else:
+                z_mask = z_col <= z_upper
+            if z_include_missing:
+                z_mask = z_mask | np.isnan(z_col)
+            combined_data = combined_data[z_mask]
 
         return len(combined_data)
 

@@ -227,6 +227,12 @@ class SidebarSections:
                             className="mb-1",
                             style={"padding": "10px 15px", "margin": "5px 0", "minHeight": "60px"},
                         ),
+                        dbc.Switch(
+                            id="snr-include-missing-pzwav",
+                            label="Include clusters with missing SNR",
+                            value=True,
+                            className="mb-2",
+                        ),
                         # Apply button
                         dbc.Button(
                             [html.I(className="fas fa-filter me-2"), "Apply SNR Filter (PZWAV)"],
@@ -286,6 +292,12 @@ class SidebarSections:
                             ],
                             className="mb-1",
                             style={"padding": "10px 15px", "margin": "5px 0", "minHeight": "60px"},
+                        ),
+                        dbc.Switch(
+                            id="snr-include-missing-amico",
+                            label="Include clusters with missing SNR",
+                            value=True,
+                            className="mb-2",
                         ),
                         # Apply button
                         dbc.Button(
@@ -380,6 +392,12 @@ class SidebarSections:
                                         "margin": "5px 0",
                                         "minHeight": "60px",
                                     },
+                                ),
+                                dbc.Switch(
+                                    id="redshift-include-missing",
+                                    label="Include clusters with missing redshift",
+                                    value=True,
+                                    className="mb-2",
                                 ),
                                 # Apply button
                                 dbc.Button(
@@ -507,6 +525,12 @@ class SidebarSections:
                             className="mb-1",
                             style={"padding": "10px 15px", "margin": "5px 0", "minHeight": "60px"},
                         ),
+                        dbc.Switch(
+                            id="richness-include-missing-zp",
+                            label="Include clusters with missing richness (ZP)",
+                            value=True,
+                            className="mb-2",
+                        ),
                         # Apply button
                         dbc.Button(
                             [html.I(className="fas fa-filter me-2"), "Apply Richness Filter (ZP)"],
@@ -592,6 +616,12 @@ class SidebarSections:
                             ],
                             className="mb-1",
                             style={"padding": "10px 15px", "margin": "5px 0", "minHeight": "60px"},
+                        ),
+                        dbc.Switch(
+                            id="richness-include-missing-rs",
+                            label="Include clusters with missing richness (RS)",
+                            value=True,
+                            className="mb-2",
                         ),
                         # Apply button
                         dbc.Button(

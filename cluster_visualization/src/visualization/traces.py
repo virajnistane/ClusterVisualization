@@ -71,11 +71,15 @@ class TraceCreator:
         snr_threshold_upper_pzwav: Optional[float] = None,
         snr_threshold_lower_amico: Optional[float] = None,
         snr_threshold_upper_amico: Optional[float] = None,
+        snr_include_missing_pzwav: bool = True,
+        snr_include_missing_amico: bool = True,
         z_threshold_lower: Optional[float] = None,
         z_threshold_upper: Optional[float] = None,
+        z_include_missing: bool = True,
         richness_threshold_lower: Optional[float] = None,
         richness_threshold_upper: Optional[float] = None,
         richness_mode: Optional[str] = None,
+        richness_include_missing: bool = True,
         flag_quality_zp: Optional[List[int]] = None,
         flag_quality_rs: Optional[List[int]] = None,
         idcluster_list: Optional[List[int]] = None,
@@ -118,7 +122,7 @@ class TraceCreator:
         #                                                              snr_threshold_lower=snr_threshold_lower_amico, snr_threshold_upper=snr_threshold_upper_amico)
 
         datamod_detcluster_mergedcat = self._apply_redshift_filtering(
-            data["data_detcluster_mergedcat"], z_threshold_lower, z_threshold_upper
+            data["data_detcluster_mergedcat"], z_threshold_lower, z_threshold_upper, z_include_missing
         )
 
         datamod_detcluster_mergedcat = self._apply_richness_filtering(
@@ -128,6 +132,7 @@ class TraceCreator:
             richness_mode,
             flag_quality_zp=flag_quality_zp,
             flag_quality_rs=flag_quality_rs,
+            include_missing=richness_include_missing,
         )
 
         try:
@@ -189,6 +194,8 @@ class TraceCreator:
             snr_threshold_upper_pzwav=snr_threshold_upper_pzwav,
             snr_threshold_lower_amico=snr_threshold_lower_amico,
             snr_threshold_upper_amico=snr_threshold_upper_amico,
+            snr_include_missing_pzwav=snr_include_missing_pzwav,
+            snr_include_missing_amico=snr_include_missing_amico,
             catred_points=catred_points,
             relayout_data=relayout_data,
             show_cltile_info=show_cltile_info,
@@ -218,6 +225,9 @@ class TraceCreator:
                 z_threshold_lower,
                 z_threshold_upper,
                 catred_points,
+                snr_include_missing_pzwav=snr_include_missing_pzwav,
+                snr_include_missing_amico=snr_include_missing_amico,
+                z_include_missing=z_include_missing,
             )
             self._profiler.record("create_traces:unmerged_traces", time.perf_counter() - _t)
 
@@ -348,46 +358,52 @@ class TraceCreator:
         self.proximity_detector.clear()
 
     def _apply_snr_filtering(
-        self, cluster_data: np.ndarray, snr_lower: Optional[float], snr_upper: Optional[float]
+        self,
+        cluster_data: np.ndarray,
+        snr_lower: Optional[float],
+        snr_upper: Optional[float],
+        include_missing: bool = True,
     ) -> np.ndarray:
         """Apply SNR filtering to merged cluster data."""
         if snr_lower is None and snr_upper is None:
             return cluster_data
-        elif snr_lower is not None and snr_upper is not None:
-            return cluster_data[
-                (cluster_data["SNR_CLUSTER"] >= snr_lower)
-                & (cluster_data["SNR_CLUSTER"] <= snr_upper)
-            ]
-        elif snr_upper is not None and snr_lower is None:
-            return cluster_data[cluster_data["SNR_CLUSTER"] <= snr_upper]
-        elif snr_lower is not None:
-            return cluster_data[cluster_data["SNR_CLUSTER"] >= snr_lower]
+
+        col = cluster_data["SNR_CLUSTER"]
+        if snr_lower is not None and snr_upper is not None:
+            range_mask = (col >= snr_lower) & (col <= snr_upper)
+        elif snr_upper is not None:
+            range_mask = col <= snr_upper
         else:
-            return cluster_data
+            range_mask = col >= snr_lower
+
+        if include_missing:
+            range_mask = range_mask | np.isnan(col)
+
+        return cluster_data[range_mask]
 
     def _apply_redshift_filtering(
         self,
         cluster_data: np.ndarray,
         z_threshold_lower: Optional[float],
         z_threshold_upper: Optional[float],
+        include_missing: bool = True,
     ) -> np.ndarray:
         """Apply redshift filtering to merged cluster data."""
         if z_threshold_lower is None and z_threshold_upper is None:
             return cluster_data
-        elif z_threshold_lower is not None and z_threshold_upper is not None:
-            result = cluster_data[
-                (cluster_data["Z_CLUSTER"] >= z_threshold_lower)
-                & (cluster_data["Z_CLUSTER"] <= z_threshold_upper)
-            ]
-            return result
-        elif z_threshold_upper is not None and z_threshold_lower is None:
-            result = cluster_data[cluster_data["Z_CLUSTER"] <= z_threshold_upper]
-            return result
-        elif z_threshold_lower is not None:
-            result = cluster_data[cluster_data["Z_CLUSTER"] >= z_threshold_lower]
-            return result
+
+        col = cluster_data["Z_CLUSTER"]
+        if z_threshold_lower is not None and z_threshold_upper is not None:
+            range_mask = (col >= z_threshold_lower) & (col <= z_threshold_upper)
+        elif z_threshold_upper is not None:
+            range_mask = col <= z_threshold_upper
         else:
-            return cluster_data
+            range_mask = col >= z_threshold_lower
+
+        if include_missing:
+            range_mask = range_mask | np.isnan(col)
+
+        return cluster_data[range_mask]
 
     def _apply_richness_filtering(
         self,
@@ -397,6 +413,7 @@ class TraceCreator:
         richness_mode: Optional[str],
         flag_quality_zp: Optional[List[int]] = None,
         flag_quality_rs: Optional[List[int]] = None,
+        include_missing: bool = True,
     ) -> np.ndarray:
         """Apply richness filtering using RICHNESS_ZP/RS range and FLAG_QUALITY_ZP/RS checklist."""
         if richness_mode is None or richness_mode == "none":
@@ -410,14 +427,19 @@ class TraceCreator:
             print(f"Debug: {col} column not found, skipping richness filtering")
             return cluster_data
 
-        if richness_lower is not None and richness_upper is not None:
-            cluster_data = cluster_data[
-                (cluster_data[col] >= richness_lower) & (cluster_data[col] <= richness_upper)
-            ]
-        elif richness_upper is not None:
-            cluster_data = cluster_data[cluster_data[col] <= richness_upper]
-        elif richness_lower is not None:
-            cluster_data = cluster_data[cluster_data[col] >= richness_lower]
+        if richness_lower is not None or richness_upper is not None:
+            col_data = cluster_data[col]
+            if richness_lower is not None and richness_upper is not None:
+                range_mask = (col_data >= richness_lower) & (col_data <= richness_upper)
+            elif richness_upper is not None:
+                range_mask = col_data <= richness_upper
+            else:
+                range_mask = col_data >= richness_lower
+
+            if include_missing:
+                range_mask = range_mask | np.isnan(col_data)
+
+            cluster_data = cluster_data[range_mask]
 
         if flag_values is not None and flag_col in cluster_data.dtype.names:
             cluster_data = cluster_data[np.isin(cluster_data[flag_col], flag_values)]
@@ -826,6 +848,8 @@ class TraceCreator:
         snr_threshold_upper_pzwav: Optional[float] = None,
         snr_threshold_lower_amico: Optional[float] = None,
         snr_threshold_upper_amico: Optional[float] = None,
+        snr_include_missing_pzwav: bool = True,
+        snr_include_missing_amico: bool = True,
         catred_points: Optional[List] = None,
         relayout_data: Optional[Dict] = None,
         show_cltile_info: bool = True,
@@ -847,10 +871,16 @@ class TraceCreator:
                 amico_data = datamod_detcluster_mergedcat[amico_mask]
 
                 pzwav_data = self._apply_snr_filtering(
-                    pzwav_data, snr_threshold_lower_pzwav, snr_threshold_upper_pzwav
+                    pzwav_data,
+                    snr_threshold_lower_pzwav,
+                    snr_threshold_upper_pzwav,
+                    snr_include_missing_pzwav,
                 )
                 amico_data = self._apply_snr_filtering(
-                    amico_data, snr_threshold_lower_amico, snr_threshold_upper_amico
+                    amico_data,
+                    snr_threshold_lower_amico,
+                    snr_threshold_upper_amico,
+                    snr_include_missing_amico,
                 )
 
                 if matching_clusters: # has_det_code & algorithm=BOTH
@@ -1059,12 +1089,14 @@ class TraceCreator:
                         datamod_detcluster_mergedcat,
                         snr_threshold_lower_pzwav,
                         snr_threshold_upper_pzwav,
+                        snr_include_missing_pzwav,
                     )
                 elif algorithm.lower() == "amico":
                     datamod_detcluster_mergedcat = self._apply_snr_filtering(
                         datamod_detcluster_mergedcat,
                         snr_threshold_lower_amico,
                         snr_threshold_upper_amico,
+                        snr_include_missing_amico,
                     )
 
                 if has_det_code:
@@ -1136,10 +1168,16 @@ class TraceCreator:
                     amico_away = away_from_catred_data[amico_mask_away]
 
                     pzwav_away = self._apply_snr_filtering(
-                        pzwav_away, snr_threshold_lower_pzwav, snr_threshold_upper_pzwav
+                        pzwav_away,
+                        snr_threshold_lower_pzwav,
+                        snr_threshold_upper_pzwav,
+                        snr_include_missing_pzwav,
                     )
                     amico_away = self._apply_snr_filtering(
-                        amico_away, snr_threshold_lower_amico, snr_threshold_upper_amico
+                        amico_away,
+                        snr_threshold_lower_amico,
+                        snr_threshold_upper_amico,
+                        snr_include_missing_amico,
                     )
 
                     # PZWAV away trace
@@ -1244,12 +1282,14 @@ class TraceCreator:
                             away_from_catred_data,
                             snr_threshold_lower_pzwav,
                             snr_threshold_upper_pzwav,
+                            snr_include_missing_pzwav,
                         )
                     elif algorithm.lower() == "amico":
                         away_from_catred_data = self._apply_snr_filtering(
                             away_from_catred_data,
                             snr_threshold_lower_amico,
                             snr_threshold_upper_amico,
+                            snr_include_missing_amico,
                         )
 
                     if has_det_code:
@@ -1313,10 +1353,16 @@ class TraceCreator:
                     amico_near = near_catred_data[amico_mask_near]
 
                     pzwav_near = self._apply_snr_filtering(
-                        pzwav_near, snr_threshold_lower_pzwav, snr_threshold_upper_pzwav
+                        pzwav_near,
+                        snr_threshold_lower_pzwav,
+                        snr_threshold_upper_pzwav,
+                        snr_include_missing_pzwav,
                     )
                     amico_near = self._apply_snr_filtering(
-                        amico_near, snr_threshold_lower_amico, snr_threshold_upper_amico
+                        amico_near,
+                        snr_threshold_lower_amico,
+                        snr_threshold_upper_amico,
+                        snr_include_missing_amico,
                     )
 
                     # PZWAV enhanced traces
@@ -1466,11 +1512,17 @@ class TraceCreator:
 
                     if algorithm.lower() == "pzwav":
                         near_catred_data = self._apply_snr_filtering(
-                            near_catred_data, snr_threshold_lower_pzwav, snr_threshold_upper_pzwav
+                            near_catred_data,
+                            snr_threshold_lower_pzwav,
+                            snr_threshold_upper_pzwav,
+                            snr_include_missing_pzwav,
                         )
                     elif algorithm.lower() == "amico":
                         near_catred_data = self._apply_snr_filtering(
-                            near_catred_data, snr_threshold_lower_amico, snr_threshold_upper_amico
+                            near_catred_data,
+                            snr_threshold_lower_amico,
+                            snr_threshold_upper_amico,
+                            snr_include_missing_amico,
                         )
 
                     near_colors, near_tile_ids = (
@@ -1706,6 +1758,9 @@ class TraceCreator:
         z_threshold_lower: Optional[float],
         z_threshold_upper: Optional[float],
         catred_points: Optional[List] = None,
+        snr_include_missing_pzwav: bool = True,
+        snr_include_missing_amico: bool = True,
+        z_include_missing: bool = True,
     ) -> None:
         """Add traces for per-tile clusters absent from the merged catalog."""
         for _tile_key, value in data["data_detcluster_by_cltile"].items():
@@ -1715,13 +1770,21 @@ class TraceCreator:
 
             if tile_algorithm == "PZWAV":
                 tile_data = self._apply_snr_filtering(
-                    tile_data, snr_threshold_lower_pzwav, snr_threshold_upper_pzwav
+                    tile_data,
+                    snr_threshold_lower_pzwav,
+                    snr_threshold_upper_pzwav,
+                    snr_include_missing_pzwav,
                 )
             elif tile_algorithm == "AMICO":
                 tile_data = self._apply_snr_filtering(
-                    tile_data, snr_threshold_lower_amico, snr_threshold_upper_amico
+                    tile_data,
+                    snr_threshold_lower_amico,
+                    snr_threshold_upper_amico,
+                    snr_include_missing_amico,
                 )
-            tile_data = self._apply_redshift_filtering(tile_data, z_threshold_lower, z_threshold_upper)
+            tile_data = self._apply_redshift_filtering(
+                tile_data, z_threshold_lower, z_threshold_upper, z_include_missing
+            )
 
             if len(tile_data) == 0:
                 continue
