@@ -443,7 +443,7 @@ class SidebarSections:
                                 {"label": "RS", "value": "rs"},
                                 {"label": "None", "value": "none"}
                             ],
-                            value="zp",  # Default to ZP
+                            value="none",  # Default to None
                             inline=True,
                             className="mb-0",
                         ),
@@ -528,7 +528,7 @@ class SidebarSections:
                         dbc.Switch(
                             id="richness-include-missing-zp",
                             label="Include clusters with missing richness (ZP)",
-                            value=True,
+                            value=False,
                             className="mb-2",
                         ),
                         # Apply button
